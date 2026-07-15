@@ -29,6 +29,9 @@ from batdetect2.models.blocks import (
     Block,
     SelfAttentionConfig,
     VerticalConv,
+    VerticalConvConfig,
+    VerticalMean,
+    VerticalMeanConfig,
     build_layer,
 )
 from batdetect2.models.types import BottleneckProtocol
@@ -94,6 +97,7 @@ class Bottleneck(Block):
         in_channels: int,
         out_channels: int,
         bottleneck_channels: int | None = None,
+        frequency_aggregator: Block | None = None,
         layers: List[torch.nn.Module] | None = None,
     ) -> None:
         """Initialise the Bottleneck layer.
@@ -125,11 +129,14 @@ class Bottleneck(Block):
         )
         self.layers = nn.ModuleList(layers or [])
 
-        self.conv_vert = VerticalConv(
-            in_channels=in_channels,
-            out_channels=self.bottleneck_channels,
-            input_height=input_height,
-        )
+        if frequency_aggregator is None:
+            frequency_aggregator = VerticalConv(
+                in_channels=in_channels,
+                out_channels=self.bottleneck_channels,
+                input_height=input_height,
+            )
+
+        self.conv_vert = frequency_aggregator
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Process the encoder's bottleneck features.
@@ -166,6 +173,13 @@ BottleneckLayerConfig = Annotated[
 """Type alias for the discriminated union of block configs usable in the Bottleneck."""
 
 
+FrequencyAggregationLayerConfig = Annotated[
+    (VerticalConvConfig | VerticalMeanConfig),
+    Field(discriminator="name"),
+]
+"""Type alias for the discriminated union of block configs usable in the FrequencyAggregation."""
+
+
 class BottleneckConfig(BaseConfig):
     """Configuration for the bottleneck component.
 
@@ -182,15 +196,69 @@ class BottleneckConfig(BaseConfig):
     """
 
     channels: int
+    frequency_aggregation: FrequencyAggregationLayerConfig = Field(
+        default_factory=lambda: VerticalConvConfig(channels=256)
+    )
     layers: List[BottleneckLayerConfig] = Field(default_factory=list)
 
 
 DEFAULT_BOTTLENECK_CONFIG: BottleneckConfig = BottleneckConfig(
     channels=256,
+    frequency_aggregation=VerticalConvConfig(channels=256),
     layers=[
         SelfAttentionConfig(attention_channels=256),
     ],
 )
+
+
+def build_frequency_aggregation(
+    input_height: int,
+    in_channels: int,
+    config: FrequencyAggregationLayerConfig,
+) -> Block:
+    """Build a block for aggregating frequency information.
+
+    Parameters
+    ----------
+    input_height : int
+        Height (number of frequency bins) of the input tensor from the
+        encoder. Must be positive.
+    in_channels : int
+        Number of channels in the input tensor from the encoder. Must be
+        positive.
+    config : FrequencyAggregationLayerConfig, optional
+        Configuration specifying the output channel count and any
+        additional layers. Uses ``VerticalConvConfig`` if ``None``.
+
+    Returns
+    -------
+    Block
+        An initialised ``VerticalConv`` module.
+
+    Raises
+    ------
+    AssertionError
+        If any configured layer changes the height of the feature map
+        (bottleneck layers must preserve height so that it can be restored
+        by repetition).
+    """
+    if config.name == "VerticalConv":
+        return VerticalConv(
+            in_channels=in_channels,
+            out_channels=config.channels,
+            input_height=input_height,
+        )
+
+    if config.name == "VerticalMean":
+        return VerticalMean(
+            in_channels=in_channels,
+            out_channels=config.channels,
+            input_height=input_height,
+        )
+
+    raise NotImplementedError(
+        f"Unknown frequency aggregation layer: {config.name}"
+    )
 
 
 def build_bottleneck(
@@ -250,9 +318,16 @@ def build_bottleneck(
         )
         layers.append(layer)
 
+    frequency_aggregator = build_frequency_aggregation(
+        input_height=input_height,
+        in_channels=current_channels,
+        config=config.frequency_aggregation,
+    )
+
     return Bottleneck(
         input_height=input_height,
         in_channels=in_channels,
         out_channels=config.channels,
+        frequency_aggregator=frequency_aggregator,
         layers=layers,
     )

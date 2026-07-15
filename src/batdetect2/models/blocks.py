@@ -474,6 +474,91 @@ class VerticalConv(Block):
         )
 
 
+class VerticalMeanConfig(BaseConfig):
+    """Configuration for a ``VerticalMean`` block.
+
+    Attributes
+    ----------
+    name : str
+        Discriminator field; always ``"VerticalMean"``.
+    """
+
+    name: Literal["VerticalMean"] = "VerticalMean"
+    """Discriminator field indicating the block type."""
+
+    channels: int
+    """Number of output channels."""
+
+
+class VerticalMean(Block):
+    """Mean pooling block operating along the height dimension.
+
+    Applies a 2D mean pooling operation, followed by a 2D convolution,
+    followed by a batch normalization and ReLU activation.
+
+    Sequence: Mean Pool -> Conv -> BN -> ReLU.
+
+    Parameters
+    ----------
+    in_channels : int
+        Number of channels in the input tensor.
+    out_channels : int
+        Number of output channels after the mean pooling.
+    input_height : int
+        The height (H dimension) of the input tensor. The convolutional kernel
+        will be sized `(1, 1)`.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        input_height: int,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.input_height = input_height
+        self.conv = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=(1, 1),
+            padding=0,
+        )
+        self.batch_norm = nn.BatchNorm2d(out_channels)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply avg pooling -> Conv -> BN -> ReLU.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor, shape `(B, C_in, H, W)`.
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor, shape `(B, C_out, 1, W)`.
+        """
+        x = x.mean(dim=2, keepdim=True)
+        x = self.conv(x)
+        return F.relu(self.batch_norm(x), inplace=True)
+
+    @block_registry.register(VerticalMeanConfig)
+    @staticmethod
+    def from_config(
+        config: VerticalMeanConfig,
+        input_channels: int,
+        input_height: int,
+    ):
+        return VerticalMean(
+            in_channels=input_channels,
+            out_channels=config.channels,
+            input_height=input_height,
+        )
+
+
+
 class FreqCoordConvDownConfig(BaseConfig):
     """Configuration for a FreqCoordConvDownBlock."""
 
