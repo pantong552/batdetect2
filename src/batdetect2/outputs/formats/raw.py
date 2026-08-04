@@ -140,7 +140,7 @@ class RawFormatter(OutputFormatterProtocol[ClipDetections]):
             "clip_id": str(clip.uuid),
         }
 
-        if self.include_class_scores:
+        if self.include_class_scores and values["class_scores"]:
             class_scores = np.stack(values["class_scores"], axis=0)
             data_vars["class_scores"] = (
                 ["detection", "classes"],
@@ -148,7 +148,7 @@ class RawFormatter(OutputFormatterProtocol[ClipDetections]):
             )
             coords["classes"] = ("classes", self.targets.class_names)
 
-        if self.include_features:
+        if self.include_features and values["features"]:
             features = np.stack(values["features"], axis=0)
             data_vars["features"] = (["detection", "feature"], features)
             coords["feature"] = ("feature", np.arange(num_features))
