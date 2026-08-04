@@ -1,4 +1,5 @@
 from __future__ import annotations
+from lightning.pytorch.loggers import Logger
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -192,6 +193,7 @@ class BatDetect2API:
         train_config: TrainingConfig | None = None,
         logger_config: LoggerConfig | None = None,
         logging_callbacks: Sequence[LoggingCallback[TrainLoggingContext]] = (),
+        train_logger: Logger | None = None,
     ):
         """Train the current model on a set of annotations.
 
@@ -255,6 +257,7 @@ class BatDetect2API:
             audio_config=audio_config or self.audio_config,
             logger_config=logger_config or self.logging_config.train,
             logging_callbacks=logging_callbacks,
+            train_logger=train_logger,
         )
         self.model.eval()
         return self
