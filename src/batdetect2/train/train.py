@@ -72,6 +72,7 @@ def run_train(
     run_name: str | None = None,
     seed: int | None = None,
     logging_callbacks: Sequence[LoggingCallback[TrainLoggingContext]] = (),
+    train_logger: Logger | None = None,
 ):
     if seed is not None:
         seed_everything(seed)
@@ -165,7 +166,7 @@ def run_train(
         roi_mapper=roi_mapper,
     )
 
-    train_logger = build_logger(
+    train_logger = train_logger or build_logger(
         logger_config or CSVLoggerConfig(),
         log_dir=log_dir,
         experiment_name=experiment_name,
