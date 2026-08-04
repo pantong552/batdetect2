@@ -112,6 +112,9 @@ class ModelConfig(BaseConfig):
 
     Attributes
     ----------
+    compile : bool
+        If ``True``, compile the model before training.  Defaults to
+        ``False``.
     samplerate : int
         Expected input audio sample rate in Hz.  Audio must be resampled
         to this rate before being passed to the model.  Defaults to
@@ -129,6 +132,7 @@ class ModelConfig(BaseConfig):
         ``PostprocessConfig()``.
     """
 
+    compile: bool = False
     samplerate: int = Field(default=TARGET_SAMPLERATE_HZ, gt=0)
     architecture: BackboneConfig = Field(default_factory=UNetBackboneConfig)
     preprocess: PreprocessingConfig = Field(

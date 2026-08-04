@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import Field
 
 from batdetect2.core.configs import BaseConfig
@@ -39,6 +41,7 @@ class PLTrainerConfig(BaseConfig):
 
 
 class TrainingConfig(BaseConfig):
+    precision: Literal["medium", "high"] | None = None
     train_loader: TrainLoaderConfig = Field(default_factory=TrainLoaderConfig)
     val_loader: ValLoaderConfig = Field(default_factory=ValLoaderConfig)
     optimizer: OptimizerConfig = Field(default_factory=AdamOptimizerConfig)
