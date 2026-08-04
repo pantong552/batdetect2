@@ -27,6 +27,7 @@ from torch import nn
 from batdetect2.core.configs import BaseConfig
 from batdetect2.models.blocks import (
     Block,
+    EfficientSelfAttentionConfig,
     SelfAttentionConfig,
     VerticalConv,
     VerticalConvConfig,
@@ -167,7 +168,7 @@ class Bottleneck(Block):
 
 
 BottleneckLayerConfig = Annotated[
-    SelfAttentionConfig,
+    SelfAttentionConfig | EfficientSelfAttentionConfig,
     Field(discriminator="name"),
 ]
 """Type alias for the discriminated union of block configs usable in the Bottleneck."""

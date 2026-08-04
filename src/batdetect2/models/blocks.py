@@ -306,6 +306,126 @@ class SelfAttention(Block):
         )
 
 
+class EfficientSelfAttentionConfig(BaseConfig):
+    """Configuration for an ``EfficientSelfAttention`` block.
+
+    Attributes
+    ----------
+    name : str
+        Discriminator field; always ``"EfficientSelfAttention"``.
+    attention_channels : int
+        Dimensionality of the query, key, and value projections.
+    temperature : float
+        Scaling factor applied to the weighted values before the final
+        linear projection. Defaults to ``1``.
+    """
+
+    name: Literal["EfficientSelfAttention"] = "EfficientSelfAttention"
+    attention_channels: int
+    temperature: float = 1.0
+
+
+class EfficientSelfAttention(Block):
+    """An optimized self-attention block operating along the time axis.
+
+    Applies a scaled dot-product self-attention mechanism across the time
+    steps of an input feature map. This version uses a fused QKV linear
+    projection and PyTorch's native scaled dot-product attention (SDPA)
+    for optimal memory usage and execution speed.
+
+    Parameters
+    ----------
+    in_channels : int
+        Number of input channels (features per time step).
+    attention_channels : int
+        Dimensionality of the query, key, and value projections.
+    temperature : float, default=1.0
+        Divisor applied together with ``attention_channels`` when scaling
+        the dot-product scores before softmax.
+
+    Attributes
+    ----------
+    qkv_proj : nn.Linear
+        Fused linear projection for queries, keys, and values.
+    pro_fun : nn.Linear
+        Final linear projection applied to the attended values.
+    temperature : float
+        Scaling divisor used when computing attention scores.
+    att_dim : int
+        Dimensionality of the attention space (``attention_channels``).
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        attention_channels: int,
+        temperature: float = 1.0,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = in_channels
+        self.temperature = temperature
+        self.att_dim = attention_channels
+        self.output_channels = in_channels
+
+        self.qkv_proj = nn.Linear(in_channels, 3 * attention_channels)
+        self.pro_fun = nn.Linear(attention_channels, in_channels)
+
+        self.scale_factor = 1.0 / (self.temperature * self.att_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply self-attention along the time dimension."""
+        x = x.squeeze(2).permute(0, 2, 1)
+
+        # Single projection pass
+        qkv = self.qkv_proj(x)
+
+        # Split along the last dimension into Q, K, V
+        query, key, value = torch.chunk(qkv, 3, dim=-1)
+
+        att = F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=None,
+            dropout_p=0.0,
+            is_causal=False,
+            scale=self.scale_factor,
+        )
+
+        op = self.pro_fun(att)
+
+        return op.permute(0, 2, 1).unsqueeze(2)
+
+    def compute_attention_weights(self, x: torch.Tensor) -> torch.Tensor:
+        """Return the softmax attention weight matrix.
+
+        Useful for visualising which time steps attend to which others.
+        """
+        x = x.squeeze(2).permute(0, 2, 1)
+
+        qkv = self.qkv_proj(x)
+        query, key, _ = torch.chunk(qkv, 3, dim=-1)
+
+        kk_qq = torch.bmm(key, query.permute(0, 2, 1)) * self.scale_factor
+        att_weights = F.softmax(kk_qq, dim=1)
+
+        return att_weights
+
+    @block_registry.register(EfficientSelfAttentionConfig)
+    @staticmethod
+    def from_config(
+        config: EfficientSelfAttentionConfig,
+        input_channels: int,
+        input_height: int,
+    ) -> "EfficientSelfAttention":
+        return EfficientSelfAttention(
+            in_channels=input_channels,
+            attention_channels=config.attention_channels,
+            temperature=config.temperature,
+        )
+
+
 class ConvConfig(BaseConfig):
     """Configuration for a basic ConvBlock."""
 
@@ -556,7 +676,6 @@ class VerticalMean(Block):
             out_channels=config.channels,
             input_height=input_height,
         )
-
 
 
 class FreqCoordConvDownConfig(BaseConfig):
