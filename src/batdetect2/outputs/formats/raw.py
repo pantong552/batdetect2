@@ -1,4 +1,6 @@
+import json
 from collections import defaultdict
+from multiprocessing import Pool
 from pathlib import Path
 from typing import List, Literal, Sequence
 from uuid import UUID, uuid4
@@ -8,6 +10,7 @@ import xarray as xr
 from loguru import logger
 from soundevent import data
 from soundevent.geometry import compute_bounds
+from tqdm import tqdm
 
 from batdetect2.core import BaseConfig
 from batdetect2.outputs.formats.base import (
@@ -25,6 +28,8 @@ class RawOutputConfig(BaseConfig):
     include_class_scores: bool = True
     include_features: bool = True
     include_geometry: bool = True
+    n_jobs: int = 1
+    show_progress: bool = False
 
 
 class RawFormatter(OutputFormatterProtocol[ClipDetections]):
@@ -35,12 +40,19 @@ class RawFormatter(OutputFormatterProtocol[ClipDetections]):
         include_features: bool = True,
         include_geometry: bool = True,
         parse_full_geometry: bool = False,
+        n_jobs: int = 1,
+        show_progress: bool = False,
     ):
         self.targets = targets
         self.include_class_scores = include_class_scores
         self.include_features = include_features
         self.include_geometry = include_geometry
         self.parse_full_geometry = parse_full_geometry
+        self.n_jobs = n_jobs
+        self.show_progress = show_progress
+
+        if n_jobs < 1:
+            raise ValueError("n_jobs must be >= 1")
 
     def format(
         self,
@@ -68,15 +80,40 @@ class RawFormatter(OutputFormatterProtocol[ClipDetections]):
     def load(self, path: data.PathLike) -> List[ClipDetections]:
         path = Path(path)
         files = list(path.glob("*.nc"))
-        predictions: List[ClipDetections] = []
 
-        for filepath in files:
-            logger.debug(f"Loading clip predictions {filepath}")
-            clip_data = xr.load_dataset(filepath)
-            prediction = self.pred_from_xr(clip_data)
-            predictions.append(prediction)
+        if self.n_jobs == 1:
+            return self._load_sequential(files)
 
-        return predictions
+        return self._load_parallel(files)
+
+    def _load_sequential(
+        self, files: Sequence[data.PathLike]
+    ) -> List[ClipDetections]:
+
+        iterable = files
+        if self.show_progress:
+            iterable = tqdm(files, total=len(files))
+
+        return [self.load_single_file(filepath) for filepath in iterable]
+
+    def _load_parallel(
+        self, files: Sequence[data.PathLike]
+    ) -> List[ClipDetections]:
+        with Pool(self.n_jobs) as pool:
+            if not self.show_progress:
+                return pool.map(self.load_single_file, files)
+
+            return list(
+                tqdm(
+                    pool.imap(self.load_single_file, files),
+                    total=len(files),
+                )
+            )
+
+    def load_single_file(self, filepath: data.PathLike) -> ClipDetections:
+        logger.debug(f"Loading clip predictions {filepath}")
+        clip_data = xr.load_dataset(filepath)
+        return self.pred_from_xr(clip_data)
 
     def pred_to_xr(
         self,
@@ -167,59 +204,81 @@ class RawFormatter(OutputFormatterProtocol[ClipDetections]):
     def pred_from_xr(self, dataset: xr.Dataset) -> ClipDetections:
         clip_data = dataset
 
-        recording = data.Recording.model_validate_json(
-            clip_data.attrs["recording"]
+        recording = data.Recording.model_construct(
+            json.loads(clip_data.attrs["recording"])
         )
 
         clip_id = clip_data.clip_id.item()
-        clip = data.Clip(
+        clip = data.Clip.model_construct(
             recording=recording,
             uuid=UUID(clip_id),
-            start_time=clip_data.clip_start,
-            end_time=clip_data.clip_end,
+            start_time=float(clip_data.clip_start),
+            end_time=float(clip_data.clip_end),
         )
 
         sound_events = []
 
-        for detection in clip_data.coords["detection"]:
-            detection_data = clip_data.sel(detection=detection)
-            score = detection_data.score.item()
+        num_detections = len(clip_data.coords["detection"])
 
-            if "geometry" in clip_data and self.parse_full_geometry:
-                geometry = data.geometry_validate(
-                    detection_data.geometry.item()
-                )
+        scores = clip_data.score.data
+        start_times = clip_data.start_time.data
+        end_times = clip_data.end_time.data
+        low_freqs = clip_data.low_freq.data
+        high_freqs = clip_data.high_freq.data
+
+        top_class_scores = clip_data.top_class_score.data
+        top_class = clip_data.top_class.data
+
+        num_classes = len(self.targets.class_names)
+        class_map = dict(
+            zip(
+                self.targets.class_names,
+                range(num_classes),
+                strict=True,
+            )
+        )
+
+        geometries = None
+        if self.parse_full_geometry and "geometry" in clip_data:
+            geometries = clip_data.geometry.data
+
+        class_scores = None
+        if "class_scores" in clip_data:
+            class_scores = clip_data.class_scores.data
+
+        features = None
+        if "features" in clip_data:
+            features = clip_data.features.data
+
+        for index in range(num_detections):
+            score = scores[index]
+
+            if geometries is not None:
+                geometry = data.geometry_validate(geometries[index])
             else:
-                start_time = detection_data.start_time.item()
-                end_time = detection_data.end_time.item()
-                low_freq = detection_data.low_freq.item()
-                high_freq = detection_data.high_freq.item()
+                start_time = start_times[index]
+                end_time = end_times[index]
+                low_freq = low_freqs[index]
+                high_freq = high_freqs[index]
                 geometry = data.BoundingBox.model_construct(
                     coordinates=[start_time, low_freq, end_time, high_freq]
                 )
 
-            if "class_scores" in detection_data:
-                class_scores = detection_data.class_scores.data
+            if class_scores is not None:
+                class_score = class_scores[index]
             else:
-                class_scores = np.zeros(len(self.targets.class_names))
-                class_index = self.targets.class_names.index(
-                    detection_data.top_class.item()
-                )
-                class_scores[class_index] = (
-                    detection_data.top_class_score.item()
-                )
+                class_score = np.zeros(num_classes)
+                class_index = class_map[top_class[index]]
+                class_score[class_index] = top_class_scores[index]
 
-            if "features" in detection_data:
-                features = detection_data.features.data
-            else:
-                features = np.zeros(0)
+            feats = features[index] if features is not None else np.zeros(0)
 
             sound_events.append(
                 Detection(
                     geometry=geometry,
                     detection_score=score,
-                    class_scores=class_scores,
-                    features=features,
+                    class_scores=class_score,
+                    features=feats,
                 )
             )
 
@@ -236,4 +295,6 @@ class RawFormatter(OutputFormatterProtocol[ClipDetections]):
             include_class_scores=config.include_class_scores,
             include_features=config.include_features,
             include_geometry=config.include_geometry,
+            n_jobs=config.n_jobs,
+            show_progress=config.show_progress,
         )
