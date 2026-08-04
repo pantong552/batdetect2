@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Optional
 
+import torch
 from lightning import Trainer, seed_everything
 from lightning.pytorch.loggers import Logger
 from loguru import logger
@@ -205,6 +206,17 @@ def run_train(
         experiment_name=experiment_name,
         run_name=run_name,
     )
+
+    if model_config.compile:
+        logger.info("Compiling model...")
+        module.compile()
+
+    if train_config.precision is not None:
+        logger.info(
+            "Setting precision float precision to {}",
+            train_config.precision,
+        )
+        torch.set_float32_matmul_precision(train_config.precision)
 
     logger.info("Starting main training loop...")
     trainer.fit(
