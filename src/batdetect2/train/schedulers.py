@@ -23,21 +23,6 @@ __all__ = [
 ]
 
 
-class CosineAnnealingSchedulerConfig(BaseConfig):
-    """Configuration for ``CosineAnnealingLR``.
-
-    Attributes
-    ----------
-    name : Literal["cosine_annealing"]
-        Discriminator field used by the scheduler registry.
-    t_max : int
-        Number of epochs to complete one cosine cycle.
-    """
-
-    name: Literal["cosine_annealing"] = "cosine_annealing"
-    t_max: int = 200
-
-
 scheduler_registry: Registry[LRScheduler, [Optimizer]] = Registry("scheduler")
 
 
@@ -53,6 +38,24 @@ class SchedulerImportConfig(ImportConfig):
     name: Literal["import"] = "import"
 
 
+class CosineAnnealingSchedulerConfig(BaseConfig):
+    """Configuration for ``CosineAnnealingLR``.
+
+    Attributes
+    ----------
+    name : Literal["cosine_annealing"]
+        Discriminator field used by the scheduler registry.
+    t_max : int
+        Number of epochs to complete one cosine cycle.
+    eta_min : float, optional
+        Minimum learning rate. Defaults to 0.
+    """
+
+    name: Literal["cosine_annealing"] = "cosine_annealing"
+    t_max: int = 200
+    eta_min: float = 0
+
+
 @scheduler_registry.register(CosineAnnealingSchedulerConfig)
 def build_cosine_scheduler(
     config: CosineAnnealingSchedulerConfig,
@@ -63,7 +66,11 @@ def build_cosine_scheduler(
     ``t_max`` is interpreted in epochs because Lightning steps the scheduler
     once per epoch when ``interval="epoch"`` is used.
     """
-    return CosineAnnealingLR(optimizer, T_max=config.t_max)
+    return CosineAnnealingLR(
+        optimizer,
+        T_max=config.t_max,
+        eta_min=config.eta_min,
+    )
 
 
 SchedulerConfig = Annotated[
