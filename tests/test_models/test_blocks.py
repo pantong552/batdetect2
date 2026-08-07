@@ -4,6 +4,8 @@ import torch
 from batdetect2.models.blocks import (
     ConvBlock,
     ConvConfig,
+    EfficientSelfAttention,
+    EfficientSelfAttentionConfig,
     FreqCoordConvDownBlock,
     FreqCoordConvDownConfig,
     FreqCoordConvUpBlock,
@@ -18,6 +20,8 @@ from batdetect2.models.blocks import (
     StandardConvUpConfig,
     VerticalConv,
     VerticalConvConfig,
+    VerticalMean,
+    VerticalMeanConfig,
     build_layer,
 )
 
@@ -99,12 +103,40 @@ def test_vertical_conv_forward_shape(dummy_input):
     assert block.out_channels == out_channels
 
 
+def test_vertical_mean_forward_shape(dummy_input):
+    """Test that VerticalMean collapses the height dimension to 1."""
+    in_channels = dummy_input.size(1)
+    input_height = dummy_input.size(2)
+    out_channels = 32
+
+    block = VerticalMean(in_channels, out_channels, input_height)
+    output = block(dummy_input)
+
+    assert output.shape == (2, out_channels, 1, 32)
+    assert block.out_channels == out_channels
+    assert block.get_output_height(input_height) == 1
+
+
 def test_self_attention_forward_shape(dummy_bottleneck_input):
     """Test that SelfAttention maintains the exact shape."""
     in_channels = dummy_bottleneck_input.size(1)
     attention_channels = 32
 
     block = SelfAttention(
+        in_channels=in_channels, attention_channels=attention_channels
+    )
+    output = block(dummy_bottleneck_input)
+
+    assert output.shape == dummy_bottleneck_input.shape
+    assert block.out_channels == in_channels
+
+
+def test_efficient_self_attention_forward_shape(dummy_bottleneck_input):
+    """Test that EfficientSelfAttention maintains the exact shape."""
+    in_channels = dummy_bottleneck_input.size(1)
+    attention_channels = 32
+
+    block = EfficientSelfAttention(
         in_channels=in_channels, attention_channels=attention_channels
     )
     output = block(dummy_bottleneck_input)
@@ -131,6 +163,51 @@ def test_self_attention_weights(dummy_bottleneck_input):
     assert torch.allclose(sum_weights, torch.ones_like(sum_weights), atol=1e-5)
 
 
+def test_efficient_self_attention_matches_self_attention_with_copied_weights(
+    dummy_bottleneck_input,
+):
+    """Temporarily compare efficient and original attention outputs."""
+    in_channels = dummy_bottleneck_input.size(1)
+    attention_channels = 32
+
+    block = SelfAttention(
+        in_channels=in_channels,
+        attention_channels=attention_channels,
+    )
+    efficient_block = EfficientSelfAttention(
+        in_channels=in_channels,
+        attention_channels=attention_channels,
+    )
+
+    # Match the fused QKV projection to the original separate projections.
+    with torch.no_grad():
+        efficient_block.qkv_proj.weight[:attention_channels].copy_(
+            block.query_fun.weight
+        )
+        efficient_block.qkv_proj.bias[:attention_channels].copy_(
+            block.query_fun.bias
+        )
+        efficient_block.qkv_proj.weight[
+            attention_channels : 2 * attention_channels
+        ].copy_(block.key_fun.weight)
+        efficient_block.qkv_proj.bias[
+            attention_channels : 2 * attention_channels
+        ].copy_(block.key_fun.bias)
+        efficient_block.qkv_proj.weight[2 * attention_channels :].copy_(
+            block.value_fun.weight
+        )
+        efficient_block.qkv_proj.bias[2 * attention_channels :].copy_(
+            block.value_fun.bias
+        )
+        efficient_block.pro_fun.weight.copy_(block.pro_fun.weight)
+        efficient_block.pro_fun.bias.copy_(block.pro_fun.bias)
+
+    output = block(dummy_bottleneck_input)
+    efficient_output = efficient_block(dummy_bottleneck_input)
+
+    torch.testing.assert_close(output, efficient_output)
+
+
 @pytest.mark.parametrize(
     "layer_config, expected_type",
     [
@@ -140,7 +217,12 @@ def test_self_attention_weights(dummy_bottleneck_input):
         (FreqCoordConvDownConfig(out_channels=32), FreqCoordConvDownBlock),
         (FreqCoordConvUpConfig(out_channels=32), FreqCoordConvUpBlock),
         (SelfAttentionConfig(attention_channels=32), SelfAttention),
+        (
+            EfficientSelfAttentionConfig(attention_channels=32),
+            EfficientSelfAttention,
+        ),
         (VerticalConvConfig(channels=32), VerticalConv),
+        (VerticalMeanConfig(channels=32), VerticalMean),
     ],
 )
 def test_build_layer_factory(layer_config, expected_type):

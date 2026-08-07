@@ -70,11 +70,16 @@ __all__ = [
     "FreqCoordConvUpBlock",
     "StandardConvUpBlock",
     "SelfAttention",
+    "EfficientSelfAttention",
+    "VerticalMean",
     "ConvConfig",
+    "EfficientSelfAttentionConfig",
     "FreqCoordConvDownConfig",
     "StandardConvDownConfig",
     "FreqCoordConvUpConfig",
     "StandardConvUpConfig",
+    "VerticalConvConfig",
+    "VerticalMeanConfig",
     "LayerConfig",
     "build_layer",
 ]
@@ -580,6 +585,10 @@ class VerticalConv(Block):
         """
         return F.relu_(self.bn(self.conv(x)))
 
+    def get_output_height(self, input_height: int) -> int:
+        """Return the collapsed output height."""
+        return 1
+
     @block_registry.register(VerticalConvConfig)
     @staticmethod
     def from_config(
@@ -663,6 +672,10 @@ class VerticalMean(Block):
         x = x.mean(dim=2, keepdim=True)
         x = self.conv(x)
         return F.relu(self.batch_norm(x), inplace=True)
+
+    def get_output_height(self, input_height: int) -> int:
+        """Return the collapsed output height."""
+        return 1
 
     @block_registry.register(VerticalMeanConfig)
     @staticmethod
@@ -1155,13 +1168,16 @@ LayerConfig = Annotated[
     | FreqCoordConvUpConfig
     | StandardConvUpConfig
     | SelfAttentionConfig
+    | EfficientSelfAttentionConfig
+    | VerticalConvConfig
+    | VerticalMeanConfig
     | LayerGroupConfig,
     Field(discriminator="name"),
 ]
 """Type alias for the discriminated union of block configuration models."""
 
 
-class LayerGroup(nn.Module):
+class LayerGroup(Block):
     """Sequential chain of blocks that acts as a single composite block.
 
     Wraps multiple ``Block`` instances in an ``nn.Sequential`` container,

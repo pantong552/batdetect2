@@ -198,7 +198,9 @@ class BottleneckConfig(BaseConfig):
 
     channels: int
     frequency_aggregation: FrequencyAggregationLayerConfig = Field(
-        default_factory=lambda: VerticalConvConfig(channels=256)
+        default_factory=lambda data: VerticalConvConfig(
+            channels=data["channels"]
+        )
     )
     layers: List[BottleneckLayerConfig] = Field(default_factory=list)
 
@@ -301,12 +303,22 @@ def build_bottleneck(
     """
     config = config or DEFAULT_BOTTLENECK_CONFIG
 
-    current_channels = in_channels
-    current_height = input_height
+    frequency_aggregator = build_frequency_aggregation(
+        input_height=input_height,
+        in_channels=in_channels,
+        config=config.frequency_aggregation,
+    )
+
+    current_channels = frequency_aggregator.out_channels
+    current_height = frequency_aggregator.get_output_height(input_height)
+    assert current_height == 1, (
+        "Bottleneck frequency aggregation should collapse spectrogram height"
+    )
 
     layers = []
 
     for layer_config in config.layers:
+        previous_height = current_height
         layer = build_layer(
             input_height=current_height,
             in_channels=current_channels,
@@ -314,21 +326,15 @@ def build_bottleneck(
         )
         current_height = layer.get_output_height(current_height)
         current_channels = layer.out_channels
-        assert current_height == input_height, (
+        assert current_height == previous_height, (
             "Bottleneck layers should not change the spectrogram height"
         )
         layers.append(layer)
 
-    frequency_aggregator = build_frequency_aggregation(
-        input_height=input_height,
-        in_channels=current_channels,
-        config=config.frequency_aggregation,
-    )
-
     return Bottleneck(
         input_height=input_height,
         in_channels=in_channels,
-        out_channels=config.channels,
+        out_channels=current_channels,
         frequency_aggregator=frequency_aggregator,
         layers=layers,
     )

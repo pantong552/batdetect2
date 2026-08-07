@@ -10,6 +10,8 @@ from hypothesis import strategies as st
 
 from batdetect2 import api
 from batdetect2.detector import parameters
+from batdetect2.models.backbones import UNetBackboneConfig
+from batdetect2.train import load_model_from_checkpoint
 
 
 @settings(deadline=None, max_examples=5)
@@ -72,3 +74,12 @@ def test_can_import_model_without_pickle_on_test_data(
             model=model_with_pickle,
         )
         assert predictions_without_pickle == predictions_with_pickle
+
+
+def test_bundled_checkpoint_loads_with_current_config_schema() -> None:
+    """Bundled checkpoints remain loadable after config schema changes."""
+    model, configs = load_model_from_checkpoint()
+
+    assert model.class_names
+    assert isinstance(configs.model.architecture, UNetBackboneConfig)
+    assert configs.model.architecture.bottleneck.frequency_aggregation.name
