@@ -21,7 +21,7 @@ This module provides:
 from typing import Annotated, List
 
 import torch
-from pydantic import Field
+from pydantic import Field, model_validator
 from torch import nn
 
 from batdetect2.core.configs import BaseConfig
@@ -197,12 +197,18 @@ class BottleneckConfig(BaseConfig):
     """
 
     channels: int
-    frequency_aggregation: FrequencyAggregationLayerConfig = Field(
-        default_factory=lambda data: VerticalConvConfig(
-            channels=data["channels"]
-        )
-    )
+    frequency_aggregation: FrequencyAggregationLayerConfig | None = None
     layers: List[BottleneckLayerConfig] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def set_default_frequency_aggregation(self) -> "BottleneckConfig":
+        """Default frequency aggregation to the bottleneck channel count."""
+        if self.frequency_aggregation is None:
+            self.frequency_aggregation = VerticalConvConfig(
+                channels=self.channels
+            )
+
+        return self
 
 
 DEFAULT_BOTTLENECK_CONFIG: BottleneckConfig = BottleneckConfig(
@@ -302,11 +308,14 @@ def build_bottleneck(
         by repetition).
     """
     config = config or DEFAULT_BOTTLENECK_CONFIG
+    frequency_aggregation = config.frequency_aggregation
+    if frequency_aggregation is None:
+        raise ValueError("frequency_aggregation must be configured.")
 
     frequency_aggregator = build_frequency_aggregation(
         input_height=input_height,
         in_channels=in_channels,
-        config=config.frequency_aggregation,
+        config=frequency_aggregation,
     )
 
     current_channels = frequency_aggregator.out_channels

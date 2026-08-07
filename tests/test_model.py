@@ -82,4 +82,8 @@ def test_bundled_checkpoint_loads_with_current_config_schema() -> None:
 
     assert model.class_names
     assert isinstance(configs.model.architecture, UNetBackboneConfig)
-    assert configs.model.architecture.bottleneck.frequency_aggregation.name
+    frequency_aggregation = (
+        configs.model.architecture.bottleneck.frequency_aggregation
+    )
+    assert frequency_aggregation is not None
+    assert frequency_aggregation.name

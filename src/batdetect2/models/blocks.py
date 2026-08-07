@@ -150,8 +150,8 @@ class SelfAttentionConfig(BaseConfig):
     attention_channels : int
         Dimensionality of the query, key, and value projections.
     temperature : float
-        Scaling factor applied to the weighted values before the final
-        linear projection. Defaults to ``1``.
+        Divisor applied together with ``attention_channels`` when scaling
+        dot-product attention logits. Defaults to ``1``.
     """
 
     name: Literal["SelfAttention"] = "SelfAttention"
@@ -321,8 +321,8 @@ class EfficientSelfAttentionConfig(BaseConfig):
     attention_channels : int
         Dimensionality of the query, key, and value projections.
     temperature : float
-        Scaling factor applied to the weighted values before the final
-        linear projection. Defaults to ``1``.
+        Divisor applied together with ``attention_channels`` when scaling
+        dot-product attention logits. Defaults to ``1``.
     """
 
     name: Literal["EfficientSelfAttention"] = "EfficientSelfAttention"
