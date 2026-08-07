@@ -70,11 +70,16 @@ __all__ = [
     "FreqCoordConvUpBlock",
     "StandardConvUpBlock",
     "SelfAttention",
+    "EfficientSelfAttention",
+    "VerticalMean",
     "ConvConfig",
+    "EfficientSelfAttentionConfig",
     "FreqCoordConvDownConfig",
     "StandardConvDownConfig",
     "FreqCoordConvUpConfig",
     "StandardConvUpConfig",
+    "VerticalConvConfig",
+    "VerticalMeanConfig",
     "LayerConfig",
     "build_layer",
 ]
@@ -145,8 +150,8 @@ class SelfAttentionConfig(BaseConfig):
     attention_channels : int
         Dimensionality of the query, key, and value projections.
     temperature : float
-        Scaling factor applied to the weighted values before the final
-        linear projection. Defaults to ``1``.
+        Divisor applied together with ``attention_channels`` when scaling
+        dot-product attention logits. Defaults to ``1``.
     """
 
     name: Literal["SelfAttention"] = "SelfAttention"
@@ -300,6 +305,126 @@ class SelfAttention(Block):
         input_height: int,
     ) -> "SelfAttention":
         return SelfAttention(
+            in_channels=input_channels,
+            attention_channels=config.attention_channels,
+            temperature=config.temperature,
+        )
+
+
+class EfficientSelfAttentionConfig(BaseConfig):
+    """Configuration for an ``EfficientSelfAttention`` block.
+
+    Attributes
+    ----------
+    name : str
+        Discriminator field; always ``"EfficientSelfAttention"``.
+    attention_channels : int
+        Dimensionality of the query, key, and value projections.
+    temperature : float
+        Divisor applied together with ``attention_channels`` when scaling
+        dot-product attention logits. Defaults to ``1``.
+    """
+
+    name: Literal["EfficientSelfAttention"] = "EfficientSelfAttention"
+    attention_channels: int
+    temperature: float = 1.0
+
+
+class EfficientSelfAttention(Block):
+    """An optimized self-attention block operating along the time axis.
+
+    Applies a scaled dot-product self-attention mechanism across the time
+    steps of an input feature map. This version uses a fused QKV linear
+    projection and PyTorch's native scaled dot-product attention (SDPA)
+    for optimal memory usage and execution speed.
+
+    Parameters
+    ----------
+    in_channels : int
+        Number of input channels (features per time step).
+    attention_channels : int
+        Dimensionality of the query, key, and value projections.
+    temperature : float, default=1.0
+        Divisor applied together with ``attention_channels`` when scaling
+        the dot-product scores before softmax.
+
+    Attributes
+    ----------
+    qkv_proj : nn.Linear
+        Fused linear projection for queries, keys, and values.
+    pro_fun : nn.Linear
+        Final linear projection applied to the attended values.
+    temperature : float
+        Scaling divisor used when computing attention scores.
+    att_dim : int
+        Dimensionality of the attention space (``attention_channels``).
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        attention_channels: int,
+        temperature: float = 1.0,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = in_channels
+        self.temperature = temperature
+        self.att_dim = attention_channels
+        self.output_channels = in_channels
+
+        self.qkv_proj = nn.Linear(in_channels, 3 * attention_channels)
+        self.pro_fun = nn.Linear(attention_channels, in_channels)
+
+        self.scale_factor = 1.0 / (self.temperature * self.att_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply self-attention along the time dimension."""
+        x = x.squeeze(2).permute(0, 2, 1)
+
+        # Single projection pass
+        qkv = self.qkv_proj(x)
+
+        # Split along the last dimension into Q, K, V
+        query, key, value = torch.chunk(qkv, 3, dim=-1)
+
+        att = F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=None,
+            dropout_p=0.0,
+            is_causal=False,
+            scale=self.scale_factor,
+        )
+
+        op = self.pro_fun(att)
+
+        return op.permute(0, 2, 1).unsqueeze(2)
+
+    def compute_attention_weights(self, x: torch.Tensor) -> torch.Tensor:
+        """Return the softmax attention weight matrix.
+
+        Useful for visualising which time steps attend to which others.
+        """
+        x = x.squeeze(2).permute(0, 2, 1)
+
+        qkv = self.qkv_proj(x)
+        query, key, _ = torch.chunk(qkv, 3, dim=-1)
+
+        kk_qq = torch.bmm(key, query.permute(0, 2, 1)) * self.scale_factor
+        att_weights = F.softmax(kk_qq, dim=1)
+
+        return att_weights
+
+    @block_registry.register(EfficientSelfAttentionConfig)
+    @staticmethod
+    def from_config(
+        config: EfficientSelfAttentionConfig,
+        input_channels: int,
+        input_height: int,
+    ) -> "EfficientSelfAttention":
+        return EfficientSelfAttention(
             in_channels=input_channels,
             attention_channels=config.attention_channels,
             temperature=config.temperature,
@@ -460,6 +585,10 @@ class VerticalConv(Block):
         """
         return F.relu_(self.bn(self.conv(x)))
 
+    def get_output_height(self, input_height: int) -> int:
+        """Return the collapsed output height."""
+        return 1
+
     @block_registry.register(VerticalConvConfig)
     @staticmethod
     def from_config(
@@ -468,6 +597,94 @@ class VerticalConv(Block):
         input_height: int,
     ):
         return VerticalConv(
+            in_channels=input_channels,
+            out_channels=config.channels,
+            input_height=input_height,
+        )
+
+
+class VerticalMeanConfig(BaseConfig):
+    """Configuration for a ``VerticalMean`` block.
+
+    Attributes
+    ----------
+    name : str
+        Discriminator field; always ``"VerticalMean"``.
+    """
+
+    name: Literal["VerticalMean"] = "VerticalMean"
+    """Discriminator field indicating the block type."""
+
+    channels: int
+    """Number of output channels."""
+
+
+class VerticalMean(Block):
+    """Mean pooling block operating along the height dimension.
+
+    Applies a 2D mean pooling operation, followed by a 2D convolution,
+    followed by a batch normalization and ReLU activation.
+
+    Sequence: Mean Pool -> Conv -> BN -> ReLU.
+
+    Parameters
+    ----------
+    in_channels : int
+        Number of channels in the input tensor.
+    out_channels : int
+        Number of output channels after the mean pooling.
+    input_height : int
+        The height (H dimension) of the input tensor. The convolutional kernel
+        will be sized `(1, 1)`.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        input_height: int,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.input_height = input_height
+        self.conv = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=(1, 1),
+            padding=0,
+        )
+        self.batch_norm = nn.BatchNorm2d(out_channels)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply avg pooling -> Conv -> BN -> ReLU.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor, shape `(B, C_in, H, W)`.
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor, shape `(B, C_out, 1, W)`.
+        """
+        x = x.mean(dim=2, keepdim=True)
+        x = self.conv(x)
+        return F.relu(self.batch_norm(x), inplace=True)
+
+    def get_output_height(self, input_height: int) -> int:
+        """Return the collapsed output height."""
+        return 1
+
+    @block_registry.register(VerticalMeanConfig)
+    @staticmethod
+    def from_config(
+        config: VerticalMeanConfig,
+        input_channels: int,
+        input_height: int,
+    ):
+        return VerticalMean(
             in_channels=input_channels,
             out_channels=config.channels,
             input_height=input_height,
@@ -951,13 +1168,16 @@ LayerConfig = Annotated[
     | FreqCoordConvUpConfig
     | StandardConvUpConfig
     | SelfAttentionConfig
+    | EfficientSelfAttentionConfig
+    | VerticalConvConfig
+    | VerticalMeanConfig
     | LayerGroupConfig,
     Field(discriminator="name"),
 ]
 """Type alias for the discriminated union of block configuration models."""
 
 
-class LayerGroup(nn.Module):
+class LayerGroup(Block):
     """Sequential chain of blocks that acts as a single composite block.
 
     Wraps multiple ``Block`` instances in an ``nn.Sequential`` container,

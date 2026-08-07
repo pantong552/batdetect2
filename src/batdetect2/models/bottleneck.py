@@ -21,14 +21,18 @@ This module provides:
 from typing import Annotated, List
 
 import torch
-from pydantic import Field
+from pydantic import Field, model_validator
 from torch import nn
 
 from batdetect2.core.configs import BaseConfig
 from batdetect2.models.blocks import (
     Block,
+    EfficientSelfAttentionConfig,
     SelfAttentionConfig,
     VerticalConv,
+    VerticalConvConfig,
+    VerticalMean,
+    VerticalMeanConfig,
     build_layer,
 )
 from batdetect2.models.types import BottleneckProtocol
@@ -94,6 +98,7 @@ class Bottleneck(Block):
         in_channels: int,
         out_channels: int,
         bottleneck_channels: int | None = None,
+        frequency_aggregator: Block | None = None,
         layers: List[torch.nn.Module] | None = None,
     ) -> None:
         """Initialise the Bottleneck layer.
@@ -125,11 +130,14 @@ class Bottleneck(Block):
         )
         self.layers = nn.ModuleList(layers or [])
 
-        self.conv_vert = VerticalConv(
-            in_channels=in_channels,
-            out_channels=self.bottleneck_channels,
-            input_height=input_height,
-        )
+        if frequency_aggregator is None:
+            frequency_aggregator = VerticalConv(
+                in_channels=in_channels,
+                out_channels=self.bottleneck_channels,
+                input_height=input_height,
+            )
+
+        self.conv_vert = frequency_aggregator
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Process the encoder's bottleneck features.
@@ -160,10 +168,17 @@ class Bottleneck(Block):
 
 
 BottleneckLayerConfig = Annotated[
-    SelfAttentionConfig,
+    SelfAttentionConfig | EfficientSelfAttentionConfig,
     Field(discriminator="name"),
 ]
 """Type alias for the discriminated union of block configs usable in the Bottleneck."""
+
+
+FrequencyAggregationLayerConfig = Annotated[
+    (VerticalConvConfig | VerticalMeanConfig),
+    Field(discriminator="name"),
+]
+"""Type alias for the discriminated union of block configs usable in the FrequencyAggregation."""
 
 
 class BottleneckConfig(BaseConfig):
@@ -182,15 +197,77 @@ class BottleneckConfig(BaseConfig):
     """
 
     channels: int
+    frequency_aggregation: FrequencyAggregationLayerConfig | None = None
     layers: List[BottleneckLayerConfig] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def set_default_frequency_aggregation(self) -> "BottleneckConfig":
+        """Default frequency aggregation to the bottleneck channel count."""
+        if self.frequency_aggregation is None:
+            self.frequency_aggregation = VerticalConvConfig(
+                channels=self.channels
+            )
+
+        return self
 
 
 DEFAULT_BOTTLENECK_CONFIG: BottleneckConfig = BottleneckConfig(
     channels=256,
+    frequency_aggregation=VerticalConvConfig(channels=256),
     layers=[
         SelfAttentionConfig(attention_channels=256),
     ],
 )
+
+
+def build_frequency_aggregation(
+    input_height: int,
+    in_channels: int,
+    config: FrequencyAggregationLayerConfig,
+) -> Block:
+    """Build a block for aggregating frequency information.
+
+    Parameters
+    ----------
+    input_height : int
+        Height (number of frequency bins) of the input tensor from the
+        encoder. Must be positive.
+    in_channels : int
+        Number of channels in the input tensor from the encoder. Must be
+        positive.
+    config : FrequencyAggregationLayerConfig, optional
+        Configuration specifying the output channel count and any
+        additional layers. Uses ``VerticalConvConfig`` if ``None``.
+
+    Returns
+    -------
+    Block
+        An initialised ``VerticalConv`` module.
+
+    Raises
+    ------
+    AssertionError
+        If any configured layer changes the height of the feature map
+        (bottleneck layers must preserve height so that it can be restored
+        by repetition).
+    """
+    if config.name == "VerticalConv":
+        return VerticalConv(
+            in_channels=in_channels,
+            out_channels=config.channels,
+            input_height=input_height,
+        )
+
+    if config.name == "VerticalMean":
+        return VerticalMean(
+            in_channels=in_channels,
+            out_channels=config.channels,
+            input_height=input_height,
+        )
+
+    raise NotImplementedError(
+        f"Unknown frequency aggregation layer: {config.name}"
+    )
 
 
 def build_bottleneck(
@@ -231,13 +308,26 @@ def build_bottleneck(
         by repetition).
     """
     config = config or DEFAULT_BOTTLENECK_CONFIG
+    frequency_aggregation = config.frequency_aggregation
+    if frequency_aggregation is None:
+        raise ValueError("frequency_aggregation must be configured.")
 
-    current_channels = in_channels
-    current_height = input_height
+    frequency_aggregator = build_frequency_aggregation(
+        input_height=input_height,
+        in_channels=in_channels,
+        config=frequency_aggregation,
+    )
+
+    current_channels = frequency_aggregator.out_channels
+    current_height = frequency_aggregator.get_output_height(input_height)
+    assert current_height == 1, (
+        "Bottleneck frequency aggregation should collapse spectrogram height"
+    )
 
     layers = []
 
     for layer_config in config.layers:
+        previous_height = current_height
         layer = build_layer(
             input_height=current_height,
             in_channels=current_channels,
@@ -245,7 +335,7 @@ def build_bottleneck(
         )
         current_height = layer.get_output_height(current_height)
         current_channels = layer.out_channels
-        assert current_height == input_height, (
+        assert current_height == previous_height, (
             "Bottleneck layers should not change the spectrogram height"
         )
         layers.append(layer)
@@ -253,6 +343,7 @@ def build_bottleneck(
     return Bottleneck(
         input_height=input_height,
         in_channels=in_channels,
-        out_channels=config.channels,
+        out_channels=current_channels,
+        frequency_aggregator=frequency_aggregator,
         layers=layers,
     )
