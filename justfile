@@ -136,7 +136,7 @@ clean: clean-build clean-pyc clean-test clean-docs
 
 # Train on example data.
 example-train OPTIONS="":
-    uv run batdetect2 train \
+    uv run batdetect2 -v train \
         --val-dataset example_data/dataset.yaml \
         --base-dir . \
         --targets example_data/targets.yaml \

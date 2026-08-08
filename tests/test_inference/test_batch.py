@@ -3,6 +3,8 @@ from pathlib import Path
 import pytest
 from soundevent import data
 
+from batdetect2.api_v2 import BatDetect2API
+from batdetect2.inference import InferenceConfig
 from batdetect2.inference.batch import run_batch_inference
 from batdetect2.targets import build_roi_mapping, build_targets
 from batdetect2.train import load_model_from_checkpoint
@@ -53,3 +55,28 @@ def test_run_batch_inference_matches_single_clip_inference(
         strict=True,
     ):
         assert_clip_detections_equal(batched, single)
+
+
+def test_run_batch_inference_compiles_detector_when_config_requests_compile(
+    example_annotations: list[data.ClipAnnotation],
+    record_compiled_detector_calls,
+) -> None:
+    api = BatDetect2API.from_config()
+    compiled_calls = record_compiled_detector_calls(api.model)
+    api.compile()
+
+    predictions = run_batch_inference(
+        api.model,
+        [example_annotations[0].clip],
+        targets=api.targets,
+        roi_mapper=api.roi_mapper,
+        audio_loader=api.audio_loader,
+        preprocessor=api.preprocessor,
+        output_transform=api.output_transform,
+        inference_config=InferenceConfig(compile_model=True),
+        batch_size=1,
+        num_workers=0,
+    )
+
+    assert predictions
+    assert compiled_calls

@@ -16,7 +16,7 @@ from batdetect2.logging import (
     LoggingCallback,
     build_logger,
 )
-from batdetect2.models import ModelConfig, build_model
+from batdetect2.models import ModelConfig, build_model, compile_model
 from batdetect2.models.types import ModelProtocol
 from batdetect2.preprocess import PreprocessorProtocol, build_preprocessor
 from batdetect2.targets import (
@@ -208,16 +208,16 @@ def run_train(
         run_name=run_name,
     )
 
-    if model_config.compile:
-        logger.info("Compiling model...")
-        module.compile()
-
     if train_config.precision is not None:
         logger.info(
-            "Setting precision float precision to {}",
+            "Setting float32 matmul precision to {}",
             train_config.precision,
         )
         torch.set_float32_matmul_precision(train_config.precision)
+
+    if train_config.compile_model:
+        logger.info("Compiling detector...")
+        compile_model(module.model)
 
     logger.info("Starting main training loop...")
     trainer.fit(

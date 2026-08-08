@@ -1,6 +1,6 @@
 import uuid
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Any, Callable, List, Optional, cast
 from uuid import uuid4
 
 import lightning as L
@@ -15,6 +15,7 @@ from batdetect2.audio.clips import build_clipper
 from batdetect2.audio.types import AudioLoader, ClipperProtocol
 from batdetect2.data import DatasetConfig, load_dataset
 from batdetect2.data.annotations.batdetect2 import BatDetect2FilesAnnotations
+from batdetect2.models.types import ModelProtocol
 from batdetect2.preprocess import build_preprocessor
 from batdetect2.preprocess.types import PreprocessorProtocol
 from batdetect2.targets import (
@@ -156,12 +157,15 @@ def generate_whistle(tmp_path: Path):
 
         offset = int((time - duration / 2) * samplerate)
         t = np.linspace(-duration / 2, duration / 2, frames, endpoint=False)
-        data = signal.gausspulse(
-            t,
-            fc=frequency,
-            bw=2 / (frequency * whistle_duration),
+        pulse = np.asarray(
+            signal.gausspulse(
+                t,
+                fc=frequency,
+                bw=2 / (frequency * whistle_duration),
+            ),
+            dtype=np.float64,
         )
-        wave = (np.roll(data, offset) * np.iinfo(np.int16).max).astype(
+        wave = (np.roll(pulse, offset) * np.iinfo(np.int16).max).astype(
             np.int16
         )
         sf.write(str(path), wave, samplerate, subtype="PCM_16")
@@ -361,6 +365,28 @@ def sample_preprocessor() -> PreprocessorProtocol:
 @pytest.fixture
 def sample_audio_loader() -> AudioLoader:
     return build_audio_loader()
+
+
+@pytest.fixture
+def record_compiled_detector_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Callable[[ModelProtocol], list[None]]:
+    def factory(model: ModelProtocol) -> list[None]:
+        compiled_calls: list[None] = []
+        detector = cast(Any, model.detector)
+        original_call_impl = detector._call_impl
+
+        def compile_detector() -> None:
+            def compiled_call(*args, **kwargs):
+                compiled_calls.append(None)
+                return original_call_impl(*args, **kwargs)
+
+            detector._compiled_call_impl = compiled_call
+
+        monkeypatch.setattr(detector, "compile", compile_detector)
+        return compiled_calls
+
+    return factory
 
 
 @pytest.fixture

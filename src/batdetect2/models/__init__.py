@@ -100,6 +100,7 @@ __all__ = [
     "ModelConfig",
     "build_model",
     "build_model_with_new_targets",
+    "compile_model",
 ]
 
 
@@ -112,9 +113,6 @@ class ModelConfig(BaseConfig):
 
     Attributes
     ----------
-    compile : bool
-        If ``True``, compile the model before training.  Defaults to
-        ``False``.
     samplerate : int
         Expected input audio sample rate in Hz.  Audio must be resampled
         to this rate before being passed to the model.  Defaults to
@@ -132,7 +130,6 @@ class ModelConfig(BaseConfig):
         ``PostprocessConfig()``.
     """
 
-    compile: bool = False
     samplerate: int = Field(default=TARGET_SAMPLERATE_HZ, gt=0)
     architecture: BackboneConfig = Field(default_factory=UNetBackboneConfig)
     preprocess: PreprocessingConfig = Field(
@@ -323,3 +320,15 @@ def build_model_with_new_targets(
         dimension_names=roi_mapper.dimension_names,
         config=model.get_config(),
     )
+
+
+def compile_model(model: ModelProtocol) -> ModelProtocol:
+    """Compile the detector path used by training and inference."""
+    if not isinstance(model.detector, torch.nn.Module):
+        raise TypeError("Detector must be a torch.nn.Module to compile.")
+
+    if getattr(model.detector, "_compiled_call_impl", None) is not None:
+        return model
+
+    model.detector.compile()
+    return model

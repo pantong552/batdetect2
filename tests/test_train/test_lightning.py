@@ -49,6 +49,16 @@ def build_default_module(
     )
 
 
+def build_fast_train_config() -> TrainingConfig:
+    train_config = TrainingConfig()
+    train_config.trainer.limit_train_batches = 1
+    train_config.trainer.limit_val_batches = 1
+    train_config.trainer.log_every_n_steps = 1
+    train_config.train_loader.batch_size = 1
+    train_config.train_loader.augmentations.enabled = False
+    return train_config
+
+
 def test_can_initialize_default_module():
     module = build_default_module()
     assert isinstance(module, L.LightningModule)
@@ -271,19 +281,7 @@ def test_train_smoke_produces_loadable_checkpoint(
     sample_audio_loader: AudioLoader,
 ):
     # Given
-    train_config = TrainingConfig.model_validate(
-        {
-            "trainer": {
-                "limit_train_batches": 1,
-                "limit_val_batches": 1,
-                "log_every_n_steps": 1,
-            },
-            "train_loader": {
-                "batch_size": 1,
-                "augmentations": {"enabled": False},
-            },
-        }
-    )
+    train_config = build_fast_train_config()
 
     # When
     run_train(
@@ -308,6 +306,73 @@ def test_train_smoke_produces_loadable_checkpoint(
     ).unsqueeze(0)
     outputs = model(wav.unsqueeze(0))
     assert outputs is not None
+
+
+@pytest.mark.slow
+def test_run_train_compiles_detector_when_train_config_requests_compile(
+    tmp_path: Path,
+    example_annotations: list[data.ClipAnnotation],
+    record_compiled_detector_calls,
+) -> None:
+    targets_config = TargetConfig()
+    targets = build_targets(targets_config)
+    roi_mapper = build_roi_mapping(targets_config.roi)
+    model = build_model(
+        ModelConfig(),
+        class_names=targets.class_names,
+        dimension_names=roi_mapper.dimension_names,
+    )
+    train_config = build_fast_train_config()
+    train_config.compile_model = True
+    compiled_calls = record_compiled_detector_calls(model)
+
+    module = run_train(
+        train_annotations=example_annotations[:1],
+        val_annotations=example_annotations[:1],
+        model=model,
+        targets=targets,
+        roi_mapper=roi_mapper,
+        targets_config=targets_config,
+        train_config=train_config,
+        num_epochs=1,
+        train_workers=0,
+        val_workers=0,
+        checkpoint_dir=tmp_path / "checkpoints",
+        log_dir=tmp_path / "logs",
+        seed=0,
+    )
+
+    assert (
+        getattr(module.model.detector, "_compiled_call_impl", None) is not None
+    )
+    assert compiled_calls
+
+
+@pytest.mark.slow
+def test_run_train_sets_float32_matmul_precision(
+    tmp_path: Path,
+    example_annotations: list[data.ClipAnnotation],
+) -> None:
+    original_precision = torch.get_float32_matmul_precision()
+    train_config = build_fast_train_config()
+    train_config.precision = "high"
+
+    try:
+        run_train(
+            train_annotations=example_annotations[:1],
+            val_annotations=example_annotations[:1],
+            train_config=train_config,
+            num_epochs=1,
+            train_workers=0,
+            val_workers=0,
+            checkpoint_dir=tmp_path / "checkpoints",
+            log_dir=tmp_path / "logs",
+            seed=0,
+        )
+
+        assert torch.get_float32_matmul_precision() == "high"
+    finally:
+        torch.set_float32_matmul_precision(original_precision)
 
 
 def test_build_training_module_uses_provided_model() -> None:
