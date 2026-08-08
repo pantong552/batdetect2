@@ -9,8 +9,6 @@ Defined in `batdetect2.train.config`.
 
 - `compile_model`
   - compile the detector before training starts. This is off by default.
-- `precision`
-  - optional float32 matrix multiplication precision setting passed to PyTorch.
 - `train_loader`
   - training data loading and clipping settings.
 - `val_loader`
@@ -37,8 +35,7 @@ Use `TrainingConfig` when you want to change things like:
 - batch size,
 - augmentation,
 - optimiser and scheduler settings,
-- runtime options such as model compilation and matrix multiplication
-  precision,
+- runtime options such as model compilation,
 - number of epochs,
 - validation frequency,
 - checkpoint behaviour.
@@ -49,9 +46,6 @@ Use `compile_model: true` to call `torch.compile` on the detector used during
 training. This can help on longer runs with stable tensor shapes, but it may be
 slower for short CPU-only experiments because PyTorch has to compile the graph
 before it can reuse it.
-
-Use `precision` to set PyTorch's float32 matrix multiplication precision before
-training starts. Supported values are `medium` and `high`.
 
 Example files live under `example_data/configs/`, including
 `example_data/configs/training.yaml`.

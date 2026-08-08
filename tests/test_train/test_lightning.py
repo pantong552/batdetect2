@@ -349,33 +349,6 @@ def test_run_train_compiles_detector_when_train_config_requests_compile(
     assert recorder.call_count > 0
 
 
-@pytest.mark.slow
-def test_run_train_sets_float32_matmul_precision(
-    tmp_path: Path,
-    example_annotations: list[data.ClipAnnotation],
-) -> None:
-    original_precision = torch.get_float32_matmul_precision()
-    train_config = build_fast_train_config()
-    train_config.precision = "high"
-
-    try:
-        run_train(
-            train_annotations=example_annotations[:1],
-            val_annotations=example_annotations[:1],
-            train_config=train_config,
-            num_epochs=1,
-            train_workers=0,
-            val_workers=0,
-            checkpoint_dir=tmp_path / "checkpoints",
-            log_dir=tmp_path / "logs",
-            seed=0,
-        )
-
-        assert torch.get_float32_matmul_precision() == "high"
-    finally:
-        torch.set_float32_matmul_precision(original_precision)
-
-
 def test_build_training_module_uses_provided_model() -> None:
     targets = build_targets(TargetConfig())
     roi_mapper = build_roi_mapping(TargetConfig().roi)
