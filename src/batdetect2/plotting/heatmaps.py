@@ -1,9 +1,9 @@
 """Plot heatmaps."""
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from matplotlib import axes, patches
-from matplotlib.cm import get_cmap
 from matplotlib.colors import Colormap, LinearSegmentedColormap, to_rgba
 
 from batdetect2.plotting.common import create_ax
@@ -80,7 +80,7 @@ def plot_classification_heatmap(
         raise ValueError("Inconsistent number of class names")
 
     if not isinstance(cmap, Colormap):
-        cmap = get_cmap(cmap)
+        cmap = plt.get_cmap(cmap)
 
     handles = []
 
