@@ -204,7 +204,7 @@ class RawFormatter(OutputFormatterProtocol[ClipDetections]):
     def pred_from_xr(self, dataset: xr.Dataset) -> ClipDetections:
         clip_data = dataset
 
-        recording = data.Recording.model_construct(
+        recording = data.Recording.model_validate(
             json.loads(clip_data.attrs["recording"])
         )
 
