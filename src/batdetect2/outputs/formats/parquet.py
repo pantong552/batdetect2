@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Literal, Sequence
+from typing import List, Literal, Sequence, TypedDict
 from uuid import UUID
 
 import numpy as np
@@ -24,6 +24,11 @@ class ParquetOutputConfig(BaseConfig):
     include_class_scores: bool = True
     include_features: bool = True
     include_geometry: bool = True
+
+
+class ClipInfo(TypedDict):
+    clip: data.Clip
+    preds: list[Detection]
 
 
 class ParquetFormatter(OutputFormatterProtocol[ClipDetections]):
@@ -120,7 +125,7 @@ class ParquetFormatter(OutputFormatterProtocol[ClipDetections]):
         else:
             df = pd.read_parquet(path)
 
-        predictions_by_clip = {}
+        predictions_by_clip: dict[UUID, ClipInfo] = {}
 
         for _, row in df.iterrows():
             clip_uuid = row["clip_uuid"]

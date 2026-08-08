@@ -185,25 +185,25 @@ def plot_clip_evaluation(
                     label="found GT",
                     edgecolor=gt_color,
                     facecolor="none" if not fill else gt_color,
-                    linestyle=gt_linestyle,
+                    linestyle=gt_linestyle,  # type: ignore
                 ),
                 patches.Patch(
                     label="missed GT",
                     edgecolor=missed_gt_color,
                     facecolor="none" if not fill else missed_gt_color,
-                    linestyle=missed_gt_linestyle,
+                    linestyle=missed_gt_linestyle,  # type: ignore
                 ),
                 patches.Patch(
                     label="true Det",
                     edgecolor=true_pred_color,
                     facecolor="none" if not fill else true_pred_color,
-                    linestyle=true_pred_linestyle,
+                    linestyle=true_pred_linestyle,  # type: ignore
                 ),
                 patches.Patch(
                     label="false Det",
                     edgecolor=false_pred_color,
                     facecolor="none" if not fill else false_pred_color,
-                    linestyle=false_pred_linestyle,
+                    linestyle=false_pred_linestyle,  # type: ignore
                 ),
             ]
         )
