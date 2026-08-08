@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 
     import numpy as np
     import torch
+    from lightning.pytorch.loggers import Logger
     from soundevent import data
 
     from batdetect2.audio import AudioConfig, AudioLoader
@@ -152,6 +153,19 @@ class BatDetect2API:
 
         self.model.eval()
 
+    def compile(self) -> "BatDetect2API":
+        """Compile the detector path used by inference.
+
+        Returns
+        -------
+        BatDetect2API
+            This API instance with the detector compiled.
+        """
+        from batdetect2.models import compile_model
+
+        compile_model(self.model)
+        return self
+
     def load_annotations(
         self,
         path: data.PathLike,
@@ -192,6 +206,7 @@ class BatDetect2API:
         train_config: TrainingConfig | None = None,
         logger_config: LoggerConfig | None = None,
         logging_callbacks: Sequence[LoggingCallback[TrainLoggingContext]] = (),
+        train_logger: Logger | None = None,
     ):
         """Train the current model on a set of annotations.
 
@@ -226,6 +241,9 @@ class BatDetect2API:
             Training logger config override.
         logging_callbacks : Sequence[LoggingCallback[TrainLoggingContext]], optional
             Extra logging callbacks to run during training setup.
+        train_logger : Logger | None, optional
+            Pre-built Lightning logger to use for training. If omitted, one is
+            built from ``logger_config``.
 
         Returns
         -------
@@ -255,6 +273,7 @@ class BatDetect2API:
             audio_config=audio_config or self.audio_config,
             logger_config=logger_config or self.logging_config.train,
             logging_callbacks=logging_callbacks,
+            train_logger=train_logger,
         )
         self.model.eval()
         return self
@@ -979,6 +998,7 @@ class BatDetect2API:
         inference_config: InferenceConfig | None = None,
         outputs_config: OutputsConfig | None = None,
         logging_config: AppLoggingConfig | None = None,
+        compile_model: bool = False,
     ) -> "BatDetect2API":
         """Build an API instance from config objects.
 
@@ -1004,6 +1024,8 @@ class BatDetect2API:
             Output config. If omitted, the default outputs config is used.
         logging_config : AppLoggingConfig | None, optional
             Logging config. If omitted, the default logging config is used.
+        compile_model : bool, optional
+            If ``True``, compile the detector path after building the API.
 
         Returns
         -------
@@ -1086,7 +1108,7 @@ class BatDetect2API:
             ),
         )
 
-        return cls(
+        api = cls(
             model_config=model_config,
             audio_config=audio_config,
             train_config=train_config,
@@ -1105,6 +1127,11 @@ class BatDetect2API:
             output_transform=output_transform,
         )
 
+        if compile_model:
+            api.compile()
+
+        return api
+
     @classmethod
     def from_checkpoint(
         cls,
@@ -1115,6 +1142,7 @@ class BatDetect2API:
         inference_config: InferenceConfig | None = None,
         outputs_config: OutputsConfig | None = None,
         logging_config: AppLoggingConfig | None = None,
+        compile_model: bool = False,
     ) -> "BatDetect2API":
         """Build an API instance from a saved checkpoint.
 
@@ -1135,6 +1163,8 @@ class BatDetect2API:
             Output config override.
         logging_config : AppLoggingConfig | None, optional
             Logging config override.
+        compile_model : bool, optional
+            If ``True``, compile the detector path after building the API.
 
         Returns
         -------
@@ -1218,7 +1248,7 @@ class BatDetect2API:
             transform=output_transform,
         )
 
-        return cls(
+        api = cls(
             model_config=model_config,
             audio_config=audio_config,
             train_config=train_config,
@@ -1236,6 +1266,11 @@ class BatDetect2API:
             formatter=formatter,
             output_transform=output_transform,
         )
+
+        if compile_model:
+            api.compile()
+
+        return api
 
     def _set_trainable_parameters(
         self,

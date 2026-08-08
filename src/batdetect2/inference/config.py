@@ -15,6 +15,7 @@ class ClipingConfig(BaseConfig):
 
 
 class InferenceConfig(BaseConfig):
+    compile_model: bool = False
     loader: InferenceLoaderConfig = Field(
         default_factory=InferenceLoaderConfig
     )

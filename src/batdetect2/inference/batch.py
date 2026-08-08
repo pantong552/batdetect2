@@ -10,6 +10,7 @@ from batdetect2.inference.clips import get_clips_from_files
 from batdetect2.inference.config import InferenceConfig
 from batdetect2.inference.dataset import build_inference_loader
 from batdetect2.inference.lightning import InferenceModule
+from batdetect2.models import compile_model
 from batdetect2.models.types import ModelProtocol
 from batdetect2.outputs import (
     OutputsConfig,
@@ -70,6 +71,9 @@ def run_batch_inference(
         num_workers=num_workers,
         batch_size=batch_size,
     )
+
+    if inference_config.compile_model:
+        compile_model(model)
 
     module = InferenceModule(
         model,

@@ -39,6 +39,7 @@ class PLTrainerConfig(BaseConfig):
 
 
 class TrainingConfig(BaseConfig):
+    compile_model: bool = False
     train_loader: TrainLoaderConfig = Field(default_factory=TrainLoaderConfig)
     val_loader: ValLoaderConfig = Field(default_factory=ValLoaderConfig)
     optimizer: OptimizerConfig = Field(default_factory=AdamOptimizerConfig)
