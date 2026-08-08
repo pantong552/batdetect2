@@ -241,6 +241,9 @@ class BatDetect2API:
             Training logger config override.
         logging_callbacks : Sequence[LoggingCallback[TrainLoggingContext]], optional
             Extra logging callbacks to run during training setup.
+        train_logger : Logger | None, optional
+            Pre-built Lightning logger to use for training. If omitted, one is
+            built from ``logger_config``.
 
         Returns
         -------

@@ -15,6 +15,9 @@ Defined in `batdetect2.api_v2`.
 - `BatDetect2API.from_config(model_config=..., targets_config=..., ...)`
   - build a full model stack from config objects.
 
+Both constructors accept `compile_model=True` to compile the detector after the
+API is built.
+
 ## Common tasks
 
 - Load a checkpoint and run prediction on one file.
@@ -22,6 +25,8 @@ Defined in `batdetect2.api_v2`.
 - Save predictions in one of the supported output formats.
 - Evaluate a model on labelled data.
 - Fine-tune an existing checkpoint on new targets.
+- Compile the detector explicitly with `BatDetect2API.compile()` when you want
+  to opt into PyTorch runtime compilation from Python.
 
 ## Generated reference
 
