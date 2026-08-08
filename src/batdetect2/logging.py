@@ -201,7 +201,14 @@ def create_tensorboard_logger(
     experiment_name: str | None = None,
     run_name: str | None = None,
 ) -> Logger:
-    from lightning.pytorch.loggers import TensorBoardLogger
+    try:
+        from lightning.pytorch.loggers import TensorBoardLogger
+    except ImportError as error:
+        raise ValueError(
+            "TensorBoard is not installed and cannot be used for logging. "
+            "Make sure you have it installed by running `pip install tensorboard` "
+            "or `uv add tensorboard`"
+        ) from error
 
     if log_dir is None:
         log_dir = Path(config.log_dir)
