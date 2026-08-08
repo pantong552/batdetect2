@@ -312,7 +312,7 @@ def test_train_smoke_produces_loadable_checkpoint(
 def test_run_train_compiles_detector_when_train_config_requests_compile(
     tmp_path: Path,
     example_annotations: list[data.ClipAnnotation],
-    record_compiled_detector_calls,
+    record_detector_compilation,
 ) -> None:
     targets_config = TargetConfig()
     targets = build_targets(targets_config)
@@ -324,7 +324,7 @@ def test_run_train_compiles_detector_when_train_config_requests_compile(
     )
     train_config = build_fast_train_config()
     train_config.compile_model = True
-    compiled_calls = record_compiled_detector_calls(model)
+    recorder = record_detector_compilation(model)
 
     module = run_train(
         train_annotations=example_annotations[:1],
@@ -345,7 +345,8 @@ def test_run_train_compiles_detector_when_train_config_requests_compile(
     assert (
         getattr(module.model.detector, "_compiled_call_impl", None) is not None
     )
-    assert compiled_calls
+    assert recorder.compile_count == 1
+    assert recorder.call_count > 0
 
 
 @pytest.mark.slow

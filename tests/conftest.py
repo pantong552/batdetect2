@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, List, Optional, cast
 from uuid import uuid4
@@ -30,6 +31,12 @@ from batdetect2.targets.types import TargetProtocol
 from batdetect2.train.labels import build_clip_labeler
 from batdetect2.train.lightning import build_training_module
 from batdetect2.train.types import ClipLabeller
+
+
+@dataclass
+class DetectorCompileRecorder:
+    compile_count: int = 0
+    call_count: int = 0
 
 
 @pytest.fixture
@@ -368,23 +375,25 @@ def sample_audio_loader() -> AudioLoader:
 
 
 @pytest.fixture
-def record_compiled_detector_calls(
+def record_detector_compilation(
     monkeypatch: pytest.MonkeyPatch,
-) -> Callable[[ModelProtocol], list[None]]:
-    def factory(model: ModelProtocol) -> list[None]:
-        compiled_calls: list[None] = []
+) -> Callable[[ModelProtocol], DetectorCompileRecorder]:
+    def factory(model: ModelProtocol) -> DetectorCompileRecorder:
+        recorder = DetectorCompileRecorder()
         detector = cast(Any, model.detector)
         original_call_impl = detector._call_impl
 
         def compile_detector() -> None:
+            recorder.compile_count += 1
+
             def compiled_call(*args, **kwargs):
-                compiled_calls.append(None)
+                recorder.call_count += 1
                 return original_call_impl(*args, **kwargs)
 
             detector._compiled_call_impl = compiled_call
 
         monkeypatch.setattr(detector, "compile", compile_detector)
-        return compiled_calls
+        return recorder
 
     return factory
 

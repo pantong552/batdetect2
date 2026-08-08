@@ -156,9 +156,9 @@ def test_process_spectrogram_rejects_batched_input(
 def test_user_can_compile_api_detector(
     api_v2: BatDetect2API,
     example_audio_files: list[Path],
-    record_compiled_detector_calls,
+    record_detector_compilation,
 ) -> None:
-    compiled_calls = record_compiled_detector_calls(api_v2.model)
+    recorder = record_detector_compilation(api_v2.model)
     audio = api_v2.load_audio(example_audio_files[0])
     spec = api_v2.generate_spectrogram(audio)
 
@@ -166,7 +166,8 @@ def test_user_can_compile_api_detector(
     api_v2.compile()
     api_v2.process_spectrogram(spec)
 
-    assert len(compiled_calls) == 1
+    assert recorder.compile_count == 1
+    assert recorder.call_count == 1
 
 
 def test_api_from_config_compiles_detector_when_requested(
@@ -181,6 +182,26 @@ def test_api_from_config_compiles_detector_when_requested(
     monkeypatch.setattr("batdetect2.models.compile_model", compile_model)
 
     api = BatDetect2API.from_config(
+        compile_model=True,
+    )
+
+    assert compiled_models == [api.model]
+
+
+def test_api_from_checkpoint_compiles_detector_when_requested(
+    tiny_checkpoint_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compiled_models = []
+
+    def compile_model(model):
+        compiled_models.append(model)
+        return model
+
+    monkeypatch.setattr("batdetect2.models.compile_model", compile_model)
+
+    api = BatDetect2API.from_checkpoint(
+        tiny_checkpoint_path,
         compile_model=True,
     )
 

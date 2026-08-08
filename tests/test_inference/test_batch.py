@@ -59,10 +59,35 @@ def test_run_batch_inference_matches_single_clip_inference(
 
 def test_run_batch_inference_compiles_detector_when_config_requests_compile(
     example_annotations: list[data.ClipAnnotation],
-    record_compiled_detector_calls,
+    record_detector_compilation,
 ) -> None:
     api = BatDetect2API.from_config()
-    compiled_calls = record_compiled_detector_calls(api.model)
+    recorder = record_detector_compilation(api.model)
+
+    predictions = run_batch_inference(
+        api.model,
+        [example_annotations[0].clip],
+        targets=api.targets,
+        roi_mapper=api.roi_mapper,
+        audio_loader=api.audio_loader,
+        preprocessor=api.preprocessor,
+        output_transform=api.output_transform,
+        inference_config=InferenceConfig(compile_model=True),
+        batch_size=1,
+        num_workers=0,
+    )
+
+    assert predictions
+    assert recorder.compile_count == 1
+    assert recorder.call_count > 0
+
+
+def test_run_batch_inference_does_not_recompile_compiled_detector(
+    example_annotations: list[data.ClipAnnotation],
+    record_detector_compilation,
+) -> None:
+    api = BatDetect2API.from_config()
+    recorder = record_detector_compilation(api.model)
     api.compile()
 
     predictions = run_batch_inference(
@@ -79,4 +104,5 @@ def test_run_batch_inference_compiles_detector_when_config_requests_compile(
     )
 
     assert predictions
-    assert compiled_calls
+    assert recorder.compile_count == 1
+    assert recorder.call_count > 0
