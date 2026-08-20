@@ -41,6 +41,10 @@ document.addEventListener('DOMContentLoaded', () => {
   initWebSocket();
   initDropZone();
   loadCheckpoints();
+  loadExperimentsList();
+  updateSTFTCalculations();
+  updateFreqDisplay();
+  updateResizeFactorDisplay();
 
   setInterval(updateElapsedTimeDisplay, 1000);
 });
@@ -60,6 +64,8 @@ function initNavigation() {
 
       if (target === 'checkpoints-tab') {
         loadCheckpoints();
+      } else if (target === 'experiments-tab') {
+        loadExperimentsList();
       }
     });
   });
@@ -215,11 +221,20 @@ function updateStatusUI(statusData) {
   document.getElementById('btn-start-training').disabled = isTraining;
   document.getElementById('btn-stop-training').disabled = !isTraining;
 
-  document.getElementById('kpi-epoch').textContent = statusData.current_epoch || 0;
-  document.getElementById('kpi-total-epochs').textContent = `/ ${statusData.total_epochs || 100}`;
+  const totalEpochs = statusData.total_epochs || 100;
+  let displayEpoch = statusData.current_epoch || 0;
 
-  const pct = statusData.total_epochs > 0 ? (statusData.current_epoch / statusData.total_epochs) * 100 : 0;
-  document.getElementById('epoch-progress-bar').style.width = `${Math.min(pct, 100)}%`;
+  if (statusData.status === 'completed') {
+    displayEpoch = totalEpochs;
+  } else if (isTraining && displayEpoch < totalEpochs) {
+    displayEpoch = displayEpoch + 1;
+  }
+
+  document.getElementById('kpi-epoch').textContent = displayEpoch;
+  document.getElementById('kpi-total-epochs').textContent = `/ ${totalEpochs}`;
+
+  const pct = totalEpochs > 0 ? (displayEpoch / totalEpochs) * 100 : 0;
+  document.getElementById('epoch-progress-bar').style.width = `${Math.min(Math.max(pct, 0), 100)}%`;
 
   const latest = statusData.latest_metrics || {};
   document.getElementById('kpi-train-loss').textContent = latest.train_loss !== undefined ? Number(latest.train_loss).toFixed(4) : '--';
@@ -274,6 +289,118 @@ function clearTerminalLogs() {
   document.getElementById('terminal-logs').innerHTML = '';
 }
 
+// Preprocessing Pipeline Helper & Real-time Calculations
+function updateSTFTCalculations() {
+  const samplerate = parseInt(document.getElementById('spec-samplerate').value) || 256000;
+  const winDuration = parseFloat(document.getElementById('spec-win-duration').value) || 0.002;
+  const winOverlap = parseFloat(document.getElementById('spec-win-overlap').value) || 0.75;
+
+  const n_fft = Math.floor(samplerate * winDuration);
+  const hop_length = Math.floor(n_fft * (1.0 - winOverlap));
+
+  document.getElementById('spec-win-dur-display').textContent = `${winDuration}s (n_fft=${n_fft})`;
+  document.getElementById('spec-win-overlap-display').textContent = `${Math.round(winOverlap * 100)}% (hop=${hop_length})`;
+}
+
+function updateFreqDisplay() {
+  const minF = parseInt(document.getElementById('spec-min-freq').value) || 0;
+  const maxF = parseInt(document.getElementById('spec-max-freq').value) || 0;
+  document.getElementById('spec-min-freq-display').textContent = `${(minF / 1000).toFixed(0)} kHz`;
+  document.getElementById('spec-max-freq-display').textContent = `${(maxF / 1000).toFixed(0)} kHz`;
+}
+
+function updateResizeFactorDisplay() {
+  const rf = parseFloat(document.getElementById('spec-resize-factor').value) || 0.5;
+  document.getElementById('spec-resize-factor-display').textContent = `${rf}x`;
+}
+
+function resetPreprocessingDefaults() {
+  document.getElementById('spec-samplerate').value = 256000;
+  document.getElementById('spec-resample-method').value = 'poly';
+  document.getElementById('spec-win-duration').value = 0.002;
+  document.getElementById('spec-win-overlap').value = 0.75;
+  document.getElementById('spec-win-fn').value = 'hann';
+  document.getElementById('spec-min-freq').value = 10000;
+  document.getElementById('spec-max-freq').value = 120000;
+  document.getElementById('spec-pcen-tc').value = 0.4;
+  document.getElementById('spec-pcen-gain').value = 0.98;
+  document.getElementById('spec-pcen-bias').value = 2.0;
+  document.getElementById('spec-pcen-power').value = 0.5;
+  document.getElementById('spec-sms-toggle').checked = true;
+  document.getElementById('spec-resize-height').value = 128;
+  document.getElementById('spec-resize-factor').value = 0.5;
+
+  updateSTFTCalculations();
+  updateFreqDisplay();
+  updateResizeFactorDisplay();
+}
+
+function getPreprocessingConfigPayload() {
+  const samplerate = parseInt(document.getElementById('spec-samplerate').value) || 256000;
+  const resampleMethod = document.getElementById('spec-resample-method').value || 'poly';
+
+  const winDuration = parseFloat(document.getElementById('spec-win-duration').value) || 0.002;
+  const winOverlap = parseFloat(document.getElementById('spec-win-overlap').value) || 0.75;
+  const winFn = document.getElementById('spec-win-fn').value || 'hann';
+
+  const minFreq = parseInt(document.getElementById('spec-min-freq').value) || 10000;
+  const maxFreq = parseInt(document.getElementById('spec-max-freq').value) || 120000;
+
+  const pcenTc = parseFloat(document.getElementById('spec-pcen-tc').value) || 0.4;
+  const pcenGain = parseFloat(document.getElementById('spec-pcen-gain').value) || 0.98;
+  const pcenBias = parseFloat(document.getElementById('spec-pcen-bias').value) || 2.0;
+  const pcenPower = parseFloat(document.getElementById('spec-pcen-power').value) || 0.5;
+  const smsEnabled = document.getElementById('spec-sms-toggle').checked;
+
+  const resizeHeight = parseInt(document.getElementById('spec-resize-height').value) || 128;
+  const resizeFactor = parseFloat(document.getElementById('spec-resize-factor').value) || 0.5;
+
+  const audio_config = {
+    samplerate: samplerate,
+    resample: {
+      enabled: true,
+      method: resampleMethod,
+    },
+  };
+
+  const spectrogram_transforms = [
+    {
+      name: 'pcen',
+      time_constant: pcenTc,
+      gain: pcenGain,
+      bias: pcenBias,
+      power: pcenPower,
+    }
+  ];
+
+  if (smsEnabled) {
+    spectrogram_transforms.push({
+      name: 'spectral_mean_subtraction',
+    });
+  }
+
+  const preprocess_config = {
+    audio_transforms: [],
+    spectrogram_transforms: spectrogram_transforms,
+    stft: {
+      window_duration: winDuration,
+      window_overlap: winOverlap,
+      window_fn: winFn,
+    },
+    frequencies: {
+      min_freq: minFreq,
+      max_freq: maxFreq,
+    },
+    size: {
+      name: 'resize_spec',
+      height: resizeHeight,
+      resize_factor: resizeFactor,
+    },
+  };
+
+  return { audio_config, preprocess_config };
+}
+
 // Training Actions
 async function startTraining() {
   const train_dataset = document.getElementById('train-dataset-input').value.trim();
@@ -291,6 +418,8 @@ async function startTraining() {
     return;
   }
 
+  const { audio_config, preprocess_config } = getPreprocessingConfigPayload();
+
   const payload = {
     train_dataset,
     val_dataset: val_dataset || null,
@@ -301,6 +430,8 @@ async function startTraining() {
     val_workers,
     seed,
     experiment_name,
+    audio_config,
+    preprocess_config,
   };
 
   try {
@@ -659,3 +790,328 @@ function exportDetectionsJSON() {
   link.click();
   document.body.removeChild(link);
 }
+
+// ----------------------------------------------------
+// EXPERIMENT LOGS (metrics.csv & hparams.yaml) VISUALIZER
+// ----------------------------------------------------
+let expMetricsChart = null;
+let currentExpMetricsData = [];
+let currentExpHparamsData = {};
+let isExpLogScale = false;
+
+function initExpChart() {
+  if (expMetricsChart) return;
+  const ctx = document.getElementById('expMetricsChart').getContext('2d');
+  expMetricsChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: []
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 200 },
+      scales: {
+        x: {
+          grid: { color: '#252526' },
+          ticks: { color: '#858585', font: { family: 'Fira Code', size: 9.5 } },
+          title: { display: true, text: 'Epoch', color: '#6e7681', font: { size: 10 } }
+        },
+        y: {
+          type: 'linear',
+          grid: { color: '#252526' },
+          ticks: { color: '#858585', font: { family: 'Fira Code', size: 9.5 } },
+          title: { display: true, text: 'Metric Value', color: '#6e7681', font: { size: 10 } }
+        }
+      },
+      plugins: {
+        legend: {
+          labels: { color: '#cccccc', font: { family: 'Inter', size: 10.5 } }
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          backgroundColor: '#252526',
+          borderColor: '#2d2d2d',
+          borderWidth: 1,
+          titleFont: { family: 'Fira Code', size: 11 },
+          bodyFont: { family: 'Fira Code', size: 10 }
+        }
+      }
+    }
+  });
+}
+
+async function loadExperimentsList() {
+  initExpChart();
+  const select = document.getElementById('exp-run-select');
+  try {
+    const res = await fetch('/api/experiments');
+    const list = await res.json();
+    select.innerHTML = '<option value="">-- Choose Logged Experiment Run --</option>';
+    if (!list || list.length === 0) {
+      select.innerHTML = '<option value="">No experiment logs found in outputs/logs/</option>';
+      return;
+    }
+
+    list.forEach((exp, idx) => {
+      const opt = document.createElement('option');
+      opt.value = exp.id;
+      const dateStr = new Date(exp.created_time * 1000).toLocaleString('en-US');
+      opt.textContent = `${exp.id} (${dateStr})`;
+      select.appendChild(opt);
+    });
+
+    // Auto-select latest if available
+    if (list.length > 0) {
+      select.value = list[0].id;
+      onSelectExperimentRun();
+    }
+  } catch (err) {
+    console.warn('Failed to load experiments:', err);
+  }
+}
+
+async function onSelectExperimentRun() {
+  const expId = document.getElementById('exp-run-select').value;
+  if (!expId) return;
+
+  try {
+    const res = await fetch(`/api/experiments/${encodeURIComponent(expId)}`);
+    const data = await res.json();
+
+    currentExpMetricsData = data.metrics || [];
+    currentExpHparamsData = data.hparams || {};
+
+    // 1. Render Hparams YAML with syntax formatting
+    renderHparamsYaml(currentExpHparamsData);
+
+    // 2. Render Chart Metrics
+    renderSelectedExpMetric();
+
+    // 3. Render Metrics Table
+    renderExpMetricsTable(currentExpMetricsData);
+
+  } catch (err) {
+    alert(`Failed to load experiment details: ${err.message}`);
+  }
+}
+
+function syntaxHighlightYaml(obj) {
+  let str = '';
+  try {
+    str = JSON.stringify(obj, null, 2);
+  } catch (e) {
+    str = String(obj);
+  }
+
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+      let cls = 'yaml-num';
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) {
+          cls = 'yaml-key';
+        } else {
+          cls = 'yaml-str';
+        }
+      } else if (/true|false/.test(match)) {
+        cls = 'yaml-bool';
+      }
+      return '<span class="' + cls + '">' + match + '</span>';
+    });
+}
+
+function renderHparamsYaml(hparams) {
+  const container = document.getElementById('hparams-yaml-display');
+  if (!hparams || Object.keys(hparams).length === 0) {
+    container.innerHTML = '<span style="color:#858585;">No hparams.yaml found for this run.</span>';
+    return;
+  }
+  container.innerHTML = syntaxHighlightYaml(hparams);
+}
+
+function renderSelectedExpMetric() {
+  initExpChart();
+  if (!expMetricsChart || !currentExpMetricsData.length) return;
+
+  const mode = document.getElementById('exp-metric-select').value;
+  const labels = currentExpMetricsData.map(r => `E${(r.epoch !== null && r.epoch !== undefined ? r.epoch : 0) + 1}`);
+
+  let datasets = [];
+
+  if (mode === 'total_loss') {
+    datasets = [
+      {
+        label: 'Total Train Loss',
+        data: currentExpMetricsData.map(r => r['total_loss/train']),
+        borderColor: '#007acc',
+        backgroundColor: 'rgba(0, 122, 204, 0.1)',
+        borderWidth: 1.5,
+        pointRadius: 2,
+        tension: 0.2,
+      },
+      {
+        label: 'Total Val Loss',
+        data: currentExpMetricsData.map(r => r['total_loss/val']),
+        borderColor: '#89d185',
+        backgroundColor: 'rgba(137, 209, 133, 0.1)',
+        borderWidth: 1.5,
+        pointRadius: 2.5,
+        tension: 0.2,
+      }
+    ];
+  } else if (mode === 'classification_loss') {
+    datasets = [
+      {
+        label: 'Classification Train Loss',
+        data: currentExpMetricsData.map(r => r['classification_loss/train']),
+        borderColor: '#9cdcfe',
+        borderWidth: 1.5,
+        pointRadius: 2,
+        tension: 0.2,
+      },
+      {
+        label: 'Classification Val Loss',
+        data: currentExpMetricsData.map(r => r['classification_loss/val']),
+        borderColor: '#dcdcaa',
+        borderWidth: 1.5,
+        pointRadius: 2,
+        tension: 0.2,
+      }
+    ];
+  } else if (mode === 'detection_loss') {
+    datasets = [
+      {
+        label: 'Detection Train Loss',
+        data: currentExpMetricsData.map(r => r['detection_loss/train']),
+        borderColor: '#4ec9b0',
+        borderWidth: 1.5,
+        pointRadius: 2,
+        tension: 0.2,
+      },
+      {
+        label: 'Detection Val Loss',
+        data: currentExpMetricsData.map(r => r['detection_loss/val']),
+        borderColor: '#ce9178',
+        borderWidth: 1.5,
+        pointRadius: 2,
+        tension: 0.2,
+      }
+    ];
+  } else if (mode === 'size_loss') {
+    datasets = [
+      {
+        label: 'BBox Size Train Loss',
+        data: currentExpMetricsData.map(r => r['size_loss/train']),
+        borderColor: '#c586c0',
+        borderWidth: 1.5,
+        pointRadius: 2,
+        tension: 0.2,
+      },
+      {
+        label: 'BBox Size Val Loss',
+        data: currentExpMetricsData.map(r => r['size_loss/val']),
+        borderColor: '#f48771',
+        borderWidth: 1.5,
+        pointRadius: 2,
+        tension: 0.2,
+      }
+    ];
+  } else if (mode === 'mAP') {
+    datasets = [
+      {
+        label: 'Mean Average Precision (mAP)',
+        data: currentExpMetricsData.map(r => r['classification/mean_average_precision']),
+        borderColor: '#4fc1ff',
+        backgroundColor: 'rgba(79, 193, 255, 0.15)',
+        borderWidth: 2,
+        pointRadius: 3,
+        tension: 0.2,
+        fill: true,
+      },
+      {
+        label: 'Detection Average Precision (AP)',
+        data: currentExpMetricsData.map(r => r['detection/average_precision']),
+        borderColor: '#89d185',
+        borderWidth: 1.5,
+        pointRadius: 2.5,
+        tension: 0.2,
+      }
+    ];
+  } else if (mode === 'species_ap') {
+    // Collect all species AP keys
+    const first = currentExpMetricsData[0] || {};
+    const speciesKeys = Object.keys(first).filter(k => k.startsWith('classification/average_precision/'));
+    const colors = ['#4ec9b0', '#9cdcfe', '#ce9178', '#dcdcaa', '#c586c0', '#89d185', '#f48771'];
+
+    datasets = speciesKeys.map((key, i) => {
+      const speciesName = key.replace('classification/average_precision/', '');
+      return {
+        label: `AP (${speciesName})`,
+        data: currentExpMetricsData.map(r => r[key]),
+        borderColor: colors[i % colors.length],
+        borderWidth: 1.5,
+        pointRadius: 2,
+        tension: 0.2,
+      };
+    });
+  }
+
+  expMetricsChart.data.labels = labels;
+  expMetricsChart.data.datasets = datasets;
+  expMetricsChart.update();
+}
+
+function toggleExpLogScale() {
+  if (!expMetricsChart) return;
+  isExpLogScale = !isExpLogScale;
+  expMetricsChart.options.scales.y.type = isExpLogScale ? 'logarithmic' : 'linear';
+  document.getElementById('btn-exp-log').classList.toggle('active', isExpLogScale);
+  expMetricsChart.update();
+}
+
+function renderExpMetricsTable(data) {
+  const tbody = document.getElementById('exp-metrics-tbody');
+  if (!data || data.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="cell-empty">No metric records found in this run.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(r => {
+    const epoch = r.epoch !== null && r.epoch !== undefined ? r.epoch + 1 : '--';
+    const tLoss = r['total_loss/train'] !== null && r['total_loss/train'] !== undefined ? Number(r['total_loss/train']).toFixed(4) : '--';
+    const vLoss = r['total_loss/val'] !== null && r['total_loss/val'] !== undefined ? Number(r['total_loss/val']).toFixed(4) : '--';
+    const detAP = r['detection/average_precision'] !== null && r['detection/average_precision'] !== undefined ? (Number(r['detection/average_precision']) * 100).toFixed(2) + '%' : '--';
+    const mAP = r['classification/mean_average_precision'] !== null && r['classification/mean_average_precision'] !== undefined ? (Number(r['classification/mean_average_precision']) * 100).toFixed(2) + '%' : '--';
+
+    return `
+      <tr>
+        <td style="font-weight:600; color:#9cdcfe;">Epoch ${epoch}</td>
+        <td style="color:#89d185;">${tLoss}</td>
+        <td style="color:#dcdcaa;">${vLoss}</td>
+        <td>${detAP}</td>
+        <td><span class="vsc-pill-green">${mAP}</span></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function exportExpMetricsCSV() {
+  if (!currentExpMetricsData.length) {
+    alert('No experiment metrics data to export!');
+    return;
+  }
+  const keys = Object.keys(currentExpMetricsData[0]);
+  const rows = currentExpMetricsData.map(r => keys.map(k => r[k] !== null && r[k] !== undefined ? r[k] : '').join(','));
+  const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [keys.join(','), ...rows].join('\n');
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement('a');
+  const expId = document.getElementById('exp-run-select').value || 'run';
+  link.setAttribute('href', encodedUri);
+  link.setAttribute('download', `${expId}_metrics_${Date.now()}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+

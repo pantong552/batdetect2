@@ -92,10 +92,12 @@ class TrainingManager:
         seed: int = 42,
         experiment_name: Optional[str] = None,
         run_name: Optional[str] = None,
+        audio_config: Optional[Dict[str, Any]] = None,
+        preprocess_config: Optional[Dict[str, Any]] = None,
         custom_args: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         if self.status == "training":
-            return {"success": False, "message": "已有訓練任務進行中！"}
+            return {"success": False, "message": "Training task already in progress!"}
 
         self.status = "training"
         self.start_time = time.time()
@@ -118,10 +120,11 @@ class TrainingManager:
             "seed": seed,
             "experiment_name": experiment_name or "batdetect2_studio",
             "run_name": run_name or f"run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            "audio_config": audio_config,
+            "preprocess_config": preprocess_config,
         }
 
-        # 建構執行指令
-        # 使用 batdetect2 train CLI
+        # Build CLI command
         cmd = [
             sys.executable,
             "-m",
@@ -148,6 +151,37 @@ class TrainingManager:
             cmd.extend(["--experiment-name", experiment_name])
         if run_name:
             cmd.extend(["--run-name", run_name])
+
+        # If audio_config or preprocess_config is provided and model_path is None, create configs
+        config_gen_dir = self.workspace_root / "outputs" / "generated_configs"
+        config_gen_dir.mkdir(parents=True, exist_ok=True)
+
+        if audio_config:
+            import yaml
+            audio_yaml_path = config_gen_dir / "audio_config.yaml"
+            with open(audio_yaml_path, "w", encoding="utf-8") as f:
+                yaml.dump(audio_config, f, default_flow_style=False)
+            cmd.extend(["--audio-config", str(audio_yaml_path.relative_to(self.workspace_root)).replace("\\", "/")])
+
+        if preprocess_config and not (model_path and model_path.strip()):
+            import yaml
+            # Load default base model.yaml or construct full ModelConfig
+            base_model_yaml = self.workspace_root / "example_data" / "configs" / "model.yaml"
+            model_dict = {}
+            if base_model_yaml.exists():
+                with open(base_model_yaml, "r", encoding="utf-8") as f:
+                    model_dict = yaml.safe_load(f) or {}
+
+            # Override samplerate and preprocess section
+            if audio_config and "samplerate" in audio_config:
+                model_dict["samplerate"] = audio_config["samplerate"]
+            model_dict["preprocess"] = preprocess_config
+
+            model_yaml_path = config_gen_dir / "model_config.yaml"
+            with open(model_yaml_path, "w", encoding="utf-8") as f:
+                yaml.dump(model_dict, f, default_flow_style=False)
+            cmd.extend(["--model-config", str(model_yaml_path.relative_to(self.workspace_root)).replace("\\", "/")])
+
         if custom_args:
             cmd.extend(custom_args)
 
@@ -349,6 +383,7 @@ class TrainingManager:
         self.end_time = time.time()
         if return_code == 0:
             self.status = "completed"
+            self.current_epoch = self.total_epochs
             self._append_log("[Studio] Training successfully completed!")
             await self.broadcast({
                 "type": "training_completed",

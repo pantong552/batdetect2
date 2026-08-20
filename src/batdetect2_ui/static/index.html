@@ -52,6 +52,16 @@
           </svg>
           <span>Model Checkpoints</span>
         </button>
+        <button class="editor-tab" data-tab="experiments-tab" id="tab-btn-experiments">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+          <span>Experiment Logs (CSV & Hparams)</span>
+        </button>
         <button class="editor-tab" data-tab="inference-tab" id="tab-btn-inference">
           <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="5 3 19 12 5 21 5 3"></polygon>
@@ -195,6 +205,164 @@
           </div>
         </div>
       </div>
+
+      <!-- STEP 3: Audio & Spectrogram Preprocessing Configuration -->
+      <div class="panel-section" style="margin-top: 10px;">
+        <div class="section-header flex-between">
+          <div class="section-title">
+            <span class="step-num">3</span>
+            <span>Audio & Spectrogram Preprocessing Pipeline Settings</span>
+          </div>
+          <div class="btn-cluster">
+            <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="resetPreprocessingDefaults()">Reset Pipeline Defaults</button>
+          </div>
+        </div>
+        <div class="section-body">
+          <div class="spec-settings-grid">
+            <!-- Stage 1: Audio Resampling -->
+            <div class="spec-stage-card">
+              <div class="spec-stage-header">
+                <span class="stage-tag">① RESAMPLING</span>
+                <span class="stage-name">Audio Resampling</span>
+              </div>
+              <div class="form-row">
+                <label for="spec-samplerate">
+                  <span>Target Sample Rate (Hz)</span>
+                </label>
+                <input type="number" id="spec-samplerate" class="vsc-input" value="256000" step="1000">
+              </div>
+              <div class="form-row">
+                <label for="spec-resample-method">
+                  <span>Resampling Method</span>
+                </label>
+                <select id="spec-resample-method" class="vsc-select">
+                  <option value="poly" selected>Polyphase (resample_poly)</option>
+                  <option value="fourier">Fourier FFT (resample)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Stage 2: STFT Transform -->
+            <div class="spec-stage-card">
+              <div class="spec-stage-header">
+                <span class="stage-tag">② STFT</span>
+                <span class="stage-name">Short-Time Fourier Transform</span>
+              </div>
+              <div class="form-row">
+                <label for="spec-win-duration">
+                  <span>Window Duration (s)</span>
+                  <span class="vsc-badge" id="spec-win-dur-display">0.002s (n_fft=512)</span>
+                </label>
+                <input type="number" id="spec-win-duration" class="vsc-input" value="0.002" step="0.0005" min="0.0005" oninput="updateSTFTCalculations()">
+              </div>
+              <div class="form-row">
+                <label for="spec-win-overlap">
+                  <span>Window Overlap</span>
+                  <span class="vsc-badge" id="spec-win-overlap-display">75% (hop=128)</span>
+                </label>
+                <input type="number" id="spec-win-overlap" class="vsc-input" value="0.75" step="0.05" min="0" max="0.95" oninput="updateSTFTCalculations()">
+              </div>
+              <div class="form-row">
+                <label for="spec-win-fn">
+                  <span>Window Function</span>
+                </label>
+                <select id="spec-win-fn" class="vsc-select">
+                  <option value="hann" selected>Hann Window</option>
+                  <option value="hamming">Hamming Window</option>
+                  <option value="kaiser">Kaiser Window</option>
+                  <option value="blackman">Blackman Window</option>
+                  <option value="bartlett">Bartlett Window</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Stage 3: Frequency Cropping -->
+            <div class="spec-stage-card">
+              <div class="spec-stage-header">
+                <span class="stage-tag">③ CROPPING</span>
+                <span class="stage-name">Frequency Band Cropping</span>
+              </div>
+              <div class="form-row">
+                <label for="spec-min-freq">
+                  <span>Min Frequency (Hz)</span>
+                  <span class="vsc-badge" id="spec-min-freq-display">10 kHz</span>
+                </label>
+                <input type="number" id="spec-min-freq" class="vsc-input" value="10000" step="1000" min="0" oninput="updateFreqDisplay()">
+              </div>
+              <div class="form-row">
+                <label for="spec-max-freq">
+                  <span>Max Frequency (Hz)</span>
+                  <span class="vsc-badge" id="spec-max-freq-display">120 kHz</span>
+                </label>
+                <input type="number" id="spec-max-freq" class="vsc-input" value="120000" step="1000" min="1000" oninput="updateFreqDisplay()">
+              </div>
+            </div>
+
+            <!-- Stage 4: Transforms (PCEN & Spectral Mean Subtraction) -->
+            <div class="spec-stage-card">
+              <div class="spec-stage-header">
+                <span class="stage-tag">④ TRANSFORMS</span>
+                <span class="stage-name">Normalization & Denoising</span>
+              </div>
+              <div class="form-cols-2">
+                <div class="form-row">
+                  <label for="spec-pcen-tc">
+                    <span>PCEN Time Constant (s)</span>
+                  </label>
+                  <input type="number" id="spec-pcen-tc" class="vsc-input" value="0.4" step="0.05" min="0.01">
+                </div>
+                <div class="form-row">
+                  <label for="spec-pcen-gain">
+                    <span>PCEN Gain</span>
+                  </label>
+                  <input type="number" id="spec-pcen-gain" class="vsc-input" value="0.98" step="0.01">
+                </div>
+              </div>
+              <div class="form-cols-2">
+                <div class="form-row">
+                  <label for="spec-pcen-bias">
+                    <span>PCEN Bias</span>
+                  </label>
+                  <input type="number" id="spec-pcen-bias" class="vsc-input" value="2.0" step="0.1">
+                </div>
+                <div class="form-row">
+                  <label for="spec-pcen-power">
+                    <span>PCEN Power</span>
+                  </label>
+                  <input type="number" id="spec-pcen-power" class="vsc-input" value="0.5" step="0.05">
+                </div>
+              </div>
+              <div class="form-row" style="margin-top: 4px;">
+                <label class="vsc-checkbox-label">
+                  <input type="checkbox" id="spec-sms-toggle" checked>
+                  <span>Spectral Mean Subtraction (Stationary Noise Removal)</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Stage 5: Final Resize -->
+            <div class="spec-stage-card">
+              <div class="spec-stage-header">
+                <span class="stage-tag">⑤ RESIZE</span>
+                <span class="stage-name">Spectrogram Dimension Scaling</span>
+              </div>
+              <div class="form-row">
+                <label for="spec-resize-height">
+                  <span>Target Height (Freq Bins)</span>
+                </label>
+                <input type="number" id="spec-resize-height" class="vsc-input" value="128" step="16" min="32">
+              </div>
+              <div class="form-row">
+                <label for="spec-resize-factor">
+                  <span>Time Resize Factor</span>
+                  <span class="vsc-badge" id="spec-resize-factor-display">0.5x</span>
+                </label>
+                <input type="number" id="spec-resize-factor" class="vsc-input" value="0.5" step="0.05" min="0.1" max="2.0" oninput="updateResizeFactorDisplay()">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- TAB 2: Live Monitor -->
@@ -314,7 +482,89 @@
       </div>
     </section>
 
-    <!-- TAB 4: Quick Inference -->
+    <!-- TAB 4: Experiment Logs (Metrics & Hparams Visualizer) -->
+    <section class="tab-panel" id="experiments-tab">
+      <div class="panel-grid-2">
+        <!-- Left: Experiment Run Selector & Hparams YAML Inspector -->
+        <div class="panel-section">
+          <div class="section-header flex-between">
+            <div class="section-title">
+              <span>1. Select Run & Hyperparameters (hparams.yaml)</span>
+            </div>
+            <button class="vsc-btn vsc-btn-secondary vsc-btn-xs" onclick="loadExperimentsList()">Refresh Runs</button>
+          </div>
+          <div class="section-body">
+            <div class="form-row">
+              <label for="exp-run-select">
+                <span>Logged Experiment Runs (outputs/logs/)</span>
+              </label>
+              <select id="exp-run-select" class="vsc-select" onchange="onSelectExperimentRun()" onfocus="if(this.options.length <= 1) loadExperimentsList()">
+                <option value="">-- Choose Logged Experiment Run --</option>
+              </select>
+            </div>
+
+            <div class="form-row" style="margin-top: 10px;">
+              <label>
+                <span>Hyperparameters & Architecture Tree (hparams.yaml)</span>
+                <span class="vsc-badge" id="hparams-status-badge">hparams.yaml</span>
+              </label>
+              <div class="hparams-viewer" id="hparams-viewer-container">
+                <pre class="vsc-yaml-code" id="hparams-yaml-display">Select a run from the dropdown above to inspect hyperparameters.</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Multi-Metric Dynamic Chart Visualizer -->
+        <div class="panel-section">
+          <div class="section-header flex-between">
+            <div class="section-title">
+              <span>2. Multi-Metric Curve Inspector (metrics.csv)</span>
+            </div>
+            <div class="section-controls">
+              <select id="exp-metric-select" class="vsc-select vsc-btn-xs" style="width: 180px;" onchange="renderSelectedExpMetric()">
+                <option value="total_loss">Total Loss (Train vs Val)</option>
+                <option value="classification_loss">Classification Loss</option>
+                <option value="detection_loss">Detection Loss</option>
+                <option value="size_loss">Bounding Box Size Loss</option>
+                <option value="mAP">Mean Average Precision (mAP)</option>
+                <option value="species_ap">Species AP Breakdown</option>
+              </select>
+              <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="toggleExpLogScale()" id="btn-exp-log">Log Scale</button>
+            </div>
+          </div>
+          <div class="section-body chart-wrapper" style="height: 380px;">
+            <canvas id="expMetricsChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom: Raw metrics.csv Data Table -->
+      <div class="panel-section" style="margin-top: 10px;">
+        <div class="section-header flex-between">
+          <div class="section-title">
+            <span>3. Metrics Epoch-by-Epoch Data Table (metrics.csv)</span>
+          </div>
+          <div class="btn-cluster">
+            <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="exportExpMetricsCSV()">Export CSV</button>
+          </div>
+        </div>
+        <div class="section-body">
+          <div class="table-scroll" style="max-height: 260px;">
+            <table class="vsc-table" id="exp-metrics-table">
+              <thead id="exp-metrics-thead">
+                <tr><th>Epoch</th><th>Total Train Loss</th><th>Total Val Loss</th><th>Detection AP</th><th>mAP</th></tr>
+              </thead>
+              <tbody id="exp-metrics-tbody">
+                <tr><td colspan="5" class="cell-empty">Select a run to view detailed epoch-by-epoch metrics table</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: Quick Inference -->
     <section class="tab-panel" id="inference-tab">
       <div class="panel-grid-2">
         <!-- Inference Settings -->
@@ -438,6 +688,6 @@
   </main>
 
   <!-- Script -->
-  <script src="app.js"></script>
+  <script src="app.js?v=20260821_1"></script>
 </body>
 </html>

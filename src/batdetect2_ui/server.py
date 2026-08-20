@@ -124,6 +124,8 @@ async def start_training(payload: Dict[str, Any]):
     seed = int(payload.get("seed", 42))
     experiment_name = payload.get("experiment_name", "batdetect2_studio")
     run_name = payload.get("run_name")
+    audio_config = payload.get("audio_config")
+    preprocess_config = payload.get("preprocess_config")
 
     res = await training_manager.start_training(
         train_dataset=train_dataset,
@@ -136,6 +138,8 @@ async def start_training(payload: Dict[str, Any]):
         seed=seed,
         experiment_name=experiment_name,
         run_name=run_name,
+        audio_config=audio_config,
+        preprocess_config=preprocess_config,
     )
     if not res["success"]:
         raise HTTPException(status_code=400, detail=res["message"])
@@ -192,6 +196,93 @@ async def delete_checkpoint(path: str):
         return {"success": True, "message": "檔案已成功刪除"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"刪除失敗: {str(e)}")
+
+
+@app.get("/api/experiments")
+async def list_experiments():
+    """取得 outputs/logs/ 下的所有實驗版本（version_0, version_1...）。"""
+    logs_dir = WORKSPACE_ROOT / "outputs" / "logs"
+    experiments = []
+    if logs_dir.exists():
+        for item in logs_dir.iterdir():
+            if item.is_dir() and item.name.startswith("version_"):
+                stat = item.stat()
+                metrics_csv = item / "metrics.csv"
+                hparams_yaml = item / "hparams.yaml"
+                experiments.append({
+                    "id": item.name,
+                    "name": f"Training Run ({item.name})",
+                    "path": str(item.relative_to(WORKSPACE_ROOT)).replace("\\", "/"),
+                    "created_time": stat.st_ctime,
+                    "has_metrics": metrics_csv.exists(),
+                    "has_hparams": hparams_yaml.exists(),
+                })
+
+    experiments.sort(key=lambda x: x["created_time"], reverse=True)
+    return experiments
+
+
+@app.get("/api/experiments/{exp_id}")
+async def get_experiment_details(exp_id: str):
+    """讀取指定實驗的 metrics.csv 曲線數據與 hparams.yaml 超參數設定。"""
+    exp_dir = WORKSPACE_ROOT / "outputs" / "logs" / exp_id
+    if not exp_dir.exists():
+        raise HTTPException(status_code=404, detail="找不到該實驗日誌！")
+
+    metrics_data = []
+    columns = []
+    aggregated_metrics = []
+    metrics_csv = exp_dir / "metrics.csv"
+    if metrics_csv.exists():
+        import csv
+        with open(metrics_csv, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            columns = reader.fieldnames or []
+            epoch_map = {}
+            for row in reader:
+                parsed_row = {}
+                for k, v in row.items():
+                    if v is not None and v != "":
+                        try:
+                            parsed_row[k] = float(v) if "." in v or "e" in v.lower() else int(v)
+                        except ValueError:
+                            parsed_row[k] = v
+                    else:
+                        parsed_row[k] = None
+                metrics_data.append(parsed_row)
+
+                # 依據 Epoch 進行智能合併（PyTorch Lightning 分別寫入 train 與 val）
+                epoch_val = parsed_row.get("epoch")
+                if epoch_val is not None:
+                    epoch_int = int(epoch_val)
+                    if epoch_int not in epoch_map:
+                        epoch_map[epoch_int] = {"epoch": epoch_int}
+                    # 將非 None 的指標更新進去
+                    for k, val in parsed_row.items():
+                        if val is not None:
+                            epoch_map[epoch_int][k] = val
+
+            # 依 epoch 排序
+            aggregated_metrics = [epoch_map[ep] for ep in sorted(epoch_map.keys())]
+
+    hparams_data = {}
+    hparams_yaml = exp_dir / "hparams.yaml"
+    if hparams_yaml.exists():
+        import yaml
+        try:
+            with open(hparams_yaml, "r", encoding="utf-8") as f:
+                hparams_data = yaml.safe_load(f) or {}
+        except Exception:
+            pass
+
+    return {
+        "id": exp_id,
+        "columns": columns,
+        "metrics": aggregated_metrics if aggregated_metrics else metrics_data,
+        "raw_metrics": metrics_data,
+        "hparams": hparams_data,
+        "total_rows": len(aggregated_metrics if aggregated_metrics else metrics_data),
+    }
 
 
 @app.get("/api/examples")
