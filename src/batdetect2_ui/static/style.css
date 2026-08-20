@@ -1,0 +1,760 @@
+/* VS Code Dark Charcoal & Professional Compact Theme */
+:root {
+  /* VS Code Core Dark Colors */
+  --vsc-bg-activity: #181818;
+  --vsc-bg-titlebar: #1e1e1e;
+  --vsc-bg-panel: #1e1e1e;
+  --vsc-bg-editor: #181818;
+  --vsc-bg-card: #252526;
+  --vsc-bg-card-hover: #2a2d2e;
+  --vsc-bg-input: #313131;
+  --vsc-bg-input-focus: #3c3c3c;
+  
+  /* Borders & Dividers */
+  --vsc-border: #2d2d2d;
+  --vsc-border-focus: #007acc;
+  --vsc-border-subtle: #2b2b2b;
+  
+  /* Accents */
+  --vsc-blue: #007acc;
+  --vsc-blue-hover: #1f8ad2;
+  --vsc-green: #4ec9b0;
+  --vsc-green-bright: #89d185;
+  --vsc-yellow: #dcdcaa;
+  --vsc-orange: #ce9178;
+  --vsc-red: #f14c4c;
+  --vsc-purple: #c586c0;
+  
+  /* Text */
+  --vsc-text-main: #cccccc;
+  --vsc-text-bright: #ffffff;
+  --vsc-text-muted: #858585;
+  --vsc-text-dim: #6e7681;
+  
+  /* Fonts */
+  --vsc-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --vsc-font-mono: 'Fira Code', Consolas, 'Courier New', monospace;
+  
+  /* Radius & Transitions */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --transition: 120ms ease;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body.vscode-theme {
+  background-color: var(--vsc-bg-editor);
+  color: var(--vsc-text-main);
+  font-family: var(--vsc-font-sans);
+  font-size: 12px;
+  line-height: 1.4;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* VS Code Thin Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--vsc-bg-editor);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(121, 121, 121, 0.4);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 100, 100, 0.7);
+}
+
+/* Titlebar & Tab Strip */
+.titlebar {
+  height: 38px;
+  background-color: var(--vsc-bg-titlebar);
+  border-bottom: 1px solid var(--vsc-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px 0 0;
+  user-select: none;
+  z-index: 100;
+}
+
+.titlebar-left {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 100%;
+  border-right: 1px solid var(--vsc-border);
+}
+
+.brand-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--vsc-blue);
+}
+
+.brand-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--vsc-text-bright);
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.brand-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  background: var(--vsc-blue);
+  color: #fff;
+  border-radius: var(--radius-xs);
+  letter-spacing: 0.05em;
+}
+
+/* Editor Tabs Strip */
+.editor-tabs {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  background: var(--vsc-bg-titlebar);
+}
+
+.editor-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 100%;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--vsc-border);
+  color: var(--vsc-text-muted);
+  font-family: var(--vsc-font-sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+  position: relative;
+}
+
+.editor-tab:hover {
+  background: var(--vsc-bg-card-hover);
+  color: var(--vsc-text-bright);
+}
+
+.editor-tab.active {
+  background: var(--vsc-bg-editor);
+  color: var(--vsc-text-bright);
+  border-top: 2px solid var(--vsc-blue);
+}
+
+.tab-icon {
+  width: 13px;
+  height: 13px;
+  opacity: 0.8;
+}
+
+.live-dot {
+  width: 5px;
+  height: 5px;
+  background: var(--vsc-green-bright);
+  border-radius: 50%;
+  display: none;
+}
+
+.live-dot.active {
+  display: inline-block;
+  box-shadow: 0 0 5px var(--vsc-green-bright);
+}
+
+/* Titlebar Right (Device Badge) */
+.titlebar-right {
+  display: flex;
+  align-items: center;
+}
+
+.device-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #252526;
+  padding: 3px 8px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--vsc-border);
+  font-size: 11px;
+  font-family: var(--vsc-font-mono);
+  color: var(--vsc-text-muted);
+}
+
+.status-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.status-idle { background: #6e7681; }
+.status-running {
+  background: var(--vsc-green-bright);
+  box-shadow: 0 0 6px var(--vsc-green-bright);
+}
+
+/* Workbench Container */
+.workbench {
+  flex: 1;
+  padding: 10px;
+  max-width: 100%;
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+/* Panels & Sections */
+.panel-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 1024px) {
+  .panel-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel-section {
+  background: var(--vsc-bg-panel);
+  border: 1px solid var(--vsc-border);
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+}
+
+.section-header {
+  height: 32px;
+  background: #252526;
+  border-bottom: 1px solid var(--vsc-border);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vsc-text-main);
+}
+
+.section-header.flex-between {
+  justify-content: space-between;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.step-num {
+  width: 15px;
+  height: 15px;
+  background: var(--vsc-blue);
+  color: #fff;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.section-body {
+  padding: 12px;
+}
+
+/* Form Controls (VS Code Style) */
+.form-row {
+  margin-bottom: 10px;
+}
+
+.form-cols-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.form-row label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--vsc-text-muted);
+  margin-bottom: 4px;
+}
+
+.req {
+  color: var(--vsc-red);
+}
+
+.vsc-input, .vsc-select {
+  width: 100%;
+  height: 28px;
+  padding: 4px 8px;
+  background: var(--vsc-bg-input);
+  border: 1px solid var(--vsc-border);
+  border-radius: var(--radius-xs);
+  color: var(--vsc-text-bright);
+  font-family: var(--vsc-font-mono);
+  font-size: 11px;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.vsc-input:focus, .vsc-select:focus {
+  border-color: var(--vsc-border-focus);
+}
+
+.input-group {
+  display: flex;
+  gap: 4px;
+}
+
+.vsc-badge {
+  font-family: var(--vsc-font-mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  background: #313131;
+  color: var(--vsc-blue);
+  border-radius: var(--radius-xs);
+  font-weight: 600;
+}
+
+/* Sliders */
+.vsc-slider {
+  width: 100%;
+  height: 4px;
+  background: #313131;
+  border-radius: 2px;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: 4px;
+}
+
+.vsc-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--vsc-blue);
+  cursor: pointer;
+}
+
+/* Preset Strip */
+.preset-strip {
+  background: #252526;
+  border: 1px solid var(--vsc-border);
+  border-radius: var(--radius-xs);
+  padding: 8px 10px;
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.preset-label {
+  font-size: 11px;
+  color: var(--vsc-text-muted);
+}
+
+.btn-cluster {
+  display: flex;
+  gap: 4px;
+}
+
+.action-footer {
+  margin-top: 12px;
+}
+
+/* VS Code Buttons */
+.vsc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-family: var(--vsc-font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: var(--radius-xs);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition);
+  user-select: none;
+}
+
+.vsc-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.vsc-btn-primary {
+  background: var(--vsc-blue);
+  color: #ffffff;
+}
+
+.vsc-btn-primary:hover:not(:disabled) {
+  background: var(--vsc-blue-hover);
+}
+
+.vsc-btn-secondary {
+  background: #313131;
+  color: var(--vsc-text-main);
+  border: 1px solid var(--vsc-border);
+}
+
+.vsc-btn-secondary:hover:not(:disabled) {
+  background: #3c3c3c;
+  color: #fff;
+}
+
+.vsc-btn-outline {
+  background: transparent;
+  color: var(--vsc-text-muted);
+  border: 1px solid var(--vsc-border);
+}
+
+.vsc-btn-outline:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--vsc-text-bright);
+}
+
+.vsc-btn-danger {
+  background: rgba(241, 76, 76, 0.2);
+  color: var(--vsc-red);
+  border: 1px solid var(--vsc-red);
+}
+
+.vsc-btn-danger:hover:not(:disabled) {
+  background: var(--vsc-red);
+  color: #fff;
+}
+
+.vsc-btn-sm {
+  padding: 2px 8px;
+  font-size: 10.5px;
+}
+
+.vsc-btn-xs {
+  padding: 1px 6px;
+  font-size: 10px;
+}
+
+.vsc-btn-lg {
+  width: 100%;
+  height: 32px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.vsc-btn-block {
+  width: 100%;
+  height: 30px;
+}
+
+.btn-icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* KPI Ribbon */
+.kpi-ribbon {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+@media (max-width: 900px) {
+  .kpi-ribbon {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.kpi-item {
+  background: var(--vsc-bg-panel);
+  border: 1px solid var(--vsc-border);
+  border-radius: var(--radius-xs);
+  padding: 8px 12px;
+}
+
+.kpi-tag {
+  font-family: var(--vsc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--vsc-text-dim);
+  letter-spacing: 0.05em;
+}
+
+.kpi-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin: 3px 0;
+}
+
+.kpi-value {
+  font-family: var(--vsc-font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.kpi-denom {
+  font-family: var(--vsc-font-mono);
+  font-size: 11px;
+  color: var(--vsc-text-dim);
+}
+
+.hl-blue { color: var(--vsc-blue); }
+.hl-green { color: var(--vsc-green-bright); }
+.hl-yellow { color: var(--vsc-yellow); }
+
+.kpi-hint {
+  font-size: 10px;
+  color: var(--vsc-text-dim);
+}
+
+.vsc-status-pill {
+  font-family: var(--vsc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: #313131;
+  color: var(--vsc-text-main);
+}
+
+.vsc-status-pill.training {
+  background: rgba(78, 201, 176, 0.2);
+  color: var(--vsc-green-bright);
+  border: 1px solid var(--vsc-green-bright);
+}
+
+.vsc-status-pill.completed {
+  background: rgba(0, 122, 204, 0.2);
+  color: var(--vsc-blue);
+  border: 1px solid var(--vsc-blue);
+}
+
+.vsc-status-pill.failed, .vsc-status-pill.stopped {
+  background: rgba(241, 76, 76, 0.2);
+  color: var(--vsc-red);
+  border: 1px solid var(--vsc-red);
+}
+
+.vsc-progress-track {
+  height: 3px;
+  background: #313131;
+  border-radius: 1px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.vsc-progress-fill {
+  height: 100%;
+  background: var(--vsc-blue);
+  transition: width 200ms ease;
+}
+
+/* Monitor Split (Chart & Console) */
+.monitor-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 1100px) {
+  .monitor-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chart-wrapper {
+  height: 340px;
+  position: relative;
+  background: #181818;
+}
+
+.terminal-wrapper {
+  height: 340px;
+  background: #181818;
+  overflow-y: auto;
+  padding: 8px 10px;
+}
+
+.vsc-terminal {
+  font-family: var(--vsc-font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  color: #d4d4d4;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.log-dim { color: var(--vsc-text-dim); }
+
+.vsc-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: var(--vsc-text-muted);
+  cursor: pointer;
+}
+
+/* Tables */
+.table-scroll {
+  overflow-x: auto;
+}
+
+.vsc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  text-align: left;
+}
+
+.vsc-table th {
+  background: #252526;
+  padding: 6px 10px;
+  color: var(--vsc-text-muted);
+  font-family: var(--vsc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--vsc-border);
+  text-transform: uppercase;
+}
+
+.vsc-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--vsc-border);
+  color: var(--vsc-text-main);
+  font-family: var(--vsc-font-mono);
+}
+
+.vsc-table tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.cell-empty {
+  text-align: center;
+  color: var(--vsc-text-dim);
+  padding: 18px !important;
+}
+
+.vsc-pill-green {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: rgba(78, 201, 176, 0.2);
+  color: var(--vsc-green-bright);
+}
+
+/* Dropzone */
+.vsc-dropzone {
+  border: 1px dashed var(--vsc-border);
+  border-radius: var(--radius-xs);
+  padding: 16px;
+  text-align: center;
+  cursor: pointer;
+  background: #181818;
+  transition: all var(--transition);
+}
+
+.vsc-dropzone:hover {
+  border-color: var(--vsc-blue);
+  background: rgba(0, 122, 204, 0.05);
+}
+
+.drop-icon {
+  width: 24px;
+  height: 24px;
+  color: var(--vsc-text-dim);
+  margin-bottom: 4px;
+}
+
+.selected-file-label {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--vsc-font-mono);
+  font-size: 10.5px;
+  color: var(--vsc-yellow);
+}
+
+/* Spectrogram Box */
+.spectrogram-box {
+  min-height: 200px;
+  background: #121212;
+  border: 1px solid var(--vsc-border);
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.spectrogram-image {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+
+.spec-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--vsc-text-dim);
+  font-size: 11px;
+}
+
+.spec-ph-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.audio-control-bar {
+  margin-top: 8px;
+}
+
+.vsc-audio-player {
+  width: 100%;
+  height: 30px;
+  filter: invert(0.85) hue-rotate(180deg);
+}

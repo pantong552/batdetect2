@@ -134,3 +134,6 @@ notebooks/tmp
 # Assets
 !assets/*
 /models
+
+# Skills
+.agent/*

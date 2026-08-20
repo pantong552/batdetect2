@@ -147,3 +147,8 @@ example-train OPTIONS="":
         --logging-config example_data/configs/logging.yaml \
         {{OPTIONS}} \
         example_data/dataset.yaml
+
+# Start BatDetect2 Training Studio Web UI
+studio PORT="8000":
+    uv run python -m batdetect2_ui --port {{PORT}}
+

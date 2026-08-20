@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BatDetect2 Studio | Deep Learning Echolocation Workbench</title>
+  <!-- Google Fonts: Inter & JetBrains Mono / Fira Code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Main Stylesheet (VS Code Dark Charcoal Theme) -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="vscode-theme">
+  <!-- Title Bar -->
+  <header class="titlebar">
+    <div class="titlebar-left">
+      <div class="app-brand">
+        <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 3c-1.5 2-3 4-6 4s-4-2-4-2c0 6 3 10 7 13 1-2 2-3 3-3s2 1 3 3c4-3 7-7 7-13 0 0-1 2-4 2s-4.5-2-6-4z" />
+          <circle cx="9" cy="9" r="1" fill="currentColor" />
+          <circle cx="15" cy="9" r="1" fill="currentColor" />
+        </svg>
+        <span class="brand-title">BatDetect2 <span class="brand-badge">STUDIO</span></span>
+      </div>
+
+      <!-- Tab Strip (VS Code Editor Tabs) -->
+      <nav class="editor-tabs">
+        <button class="editor-tab active" data-tab="config-tab" id="tab-btn-config">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <span>Training Config</span>
+        </button>
+        <button class="editor-tab" data-tab="monitor-tab" id="tab-btn-monitor">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+          <span>Live Monitor</span>
+          <span class="live-dot" id="live-indicator"></span>
+        </button>
+        <button class="editor-tab" data-tab="checkpoints-tab" id="tab-btn-checkpoints">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span>Model Checkpoints</span>
+        </button>
+        <button class="editor-tab" data-tab="inference-tab" id="tab-btn-inference">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          <span>Quick Inference</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- Title Bar Right (Hardware & Status) -->
+    <div class="titlebar-right">
+      <div class="device-badge" id="device-pill" title="Hardware accelerator status">
+        <span class="status-indicator status-idle" id="beacon-indicator"></span>
+        <span class="device-label" id="device-label">Detecting Hardware...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Workspace Area -->
+  <main class="workbench">
+    <!-- TAB 1: Training Config -->
+    <section class="tab-panel active" id="config-tab">
+      <div class="panel-grid-2">
+        <!-- Panel Left: Dataset & Paths -->
+        <div class="panel-section">
+          <div class="section-header">
+            <div class="section-title">
+              <span class="step-num">1</span>
+              <span>Dataset & Target Specifications</span>
+            </div>
+          </div>
+          <div class="section-body">
+            <div class="form-row">
+              <label for="train-dataset-input">
+                <span>Train Dataset (YAML)</span>
+                <span class="req">*</span>
+              </label>
+              <div class="input-group">
+                <input type="text" id="train-dataset-input" class="vsc-input" value="example_data/dataset.yaml" placeholder="example_data/dataset.yaml">
+                <button class="vsc-btn vsc-btn-secondary" onclick="setPreset('train-dataset-input', 'example_data/dataset.yaml')">Example</button>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <label for="val-dataset-input">
+                <span>Validation Dataset (YAML)</span>
+              </label>
+              <div class="input-group">
+                <input type="text" id="val-dataset-input" class="vsc-input" value="example_data/dataset.yaml" placeholder="example_data/dataset.yaml">
+                <button class="vsc-btn vsc-btn-secondary" onclick="setPreset('val-dataset-input', 'example_data/dataset.yaml')">Example</button>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <label for="targets-input">
+                <span>Target Categories (YAML)</span>
+              </label>
+              <div class="input-group">
+                <input type="text" id="targets-input" class="vsc-input" value="example_data/targets.yaml" placeholder="example_data/targets.yaml">
+                <button class="vsc-btn vsc-btn-secondary" onclick="setPreset('targets-input', 'example_data/targets.yaml')">Example</button>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <label for="base-model-input">
+                <span>Base Model / Checkpoint (Optional for Fine-tuning)</span>
+              </label>
+              <input type="text" id="base-model-input" class="vsc-input" placeholder="Leave blank for train from scratch, or enter .ckpt path">
+            </div>
+
+            <div class="form-row">
+              <label for="experiment-name-input">
+                <span>Experiment Name</span>
+              </label>
+              <input type="text" id="experiment-name-input" class="vsc-input" value="batdetect2_studio_run">
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel Right: Hyperparameters & Execution -->
+        <div class="panel-section">
+          <div class="section-header">
+            <div class="section-title">
+              <span class="step-num">2</span>
+              <span>Hyperparameter Tuning</span>
+            </div>
+          </div>
+          <div class="section-body">
+            <div class="form-cols-2">
+              <div class="form-row">
+                <label for="epochs-slider">
+                  <span>Max Epochs</span>
+                  <span class="vsc-badge" id="epochs-display">100</span>
+                </label>
+                <input type="range" id="epochs-slider" class="vsc-slider" min="1" max="500" value="100" oninput="updateRangeDisplay('epochs-slider', 'epochs-display')">
+              </div>
+
+              <div class="form-row">
+                <label for="seed-input">
+                  <span>Random Seed</span>
+                </label>
+                <input type="number" id="seed-input" class="vsc-input" value="42">
+              </div>
+            </div>
+
+            <div class="form-cols-2">
+              <div class="form-row">
+                <label for="train-workers-input">
+                  <span>Train Workers</span>
+                </label>
+                <input type="number" id="train-workers-input" class="vsc-input" value="0" min="0" max="16">
+              </div>
+
+              <div class="form-row">
+                <label for="val-workers-input">
+                  <span>Val Workers</span>
+                </label>
+                <input type="number" id="val-workers-input" class="vsc-input" value="0" min="0" max="16">
+              </div>
+            </div>
+
+            <!-- Quick Presets -->
+            <div class="preset-strip">
+              <span class="preset-label">Presets:</span>
+              <div class="btn-cluster">
+                <button class="vsc-btn vsc-btn-outline vsc-btn-sm" onclick="applyPresetMode('quick')">Quick Test (5 Epochs)</button>
+                <button class="vsc-btn vsc-btn-outline vsc-btn-sm" onclick="applyPresetMode('standard')">Standard (100 Epochs)</button>
+                <button class="vsc-btn vsc-btn-outline vsc-btn-sm" onclick="applyPresetMode('deep')">Deep Train (200 Epochs)</button>
+              </div>
+            </div>
+
+            <!-- Run Button -->
+            <div class="action-footer">
+              <button id="btn-start-training" class="vsc-btn vsc-btn-primary vsc-btn-lg" onclick="startTraining()">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                <span>Start Training</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: Live Monitor -->
+    <section class="tab-panel" id="monitor-tab">
+      <!-- Status KPI Ribbon -->
+      <div class="kpi-ribbon">
+        <div class="kpi-item">
+          <span class="kpi-tag">STATUS</span>
+          <div class="kpi-value-row">
+            <span class="vsc-status-pill" id="kpi-status-badge">IDLE</span>
+          </div>
+          <span class="kpi-hint" id="kpi-elapsed-time">Elapsed: 00:00:00</span>
+        </div>
+
+        <div class="kpi-item">
+          <span class="kpi-tag">EPOCH PROGRESS</span>
+          <div class="kpi-value-row">
+            <span class="kpi-value hl-blue" id="kpi-epoch">0</span>
+            <span class="kpi-denom" id="kpi-total-epochs">/ 100</span>
+          </div>
+          <div class="vsc-progress-track">
+            <div class="vsc-progress-fill" id="epoch-progress-bar" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <div class="kpi-item">
+          <span class="kpi-tag">TRAIN LOSS</span>
+          <div class="kpi-value-row">
+            <span class="kpi-value hl-green" id="kpi-train-loss">--</span>
+          </div>
+          <span class="kpi-hint">Total Train Loss</span>
+        </div>
+
+        <div class="kpi-item">
+          <span class="kpi-tag">VAL LOSS</span>
+          <div class="kpi-value-row">
+            <span class="kpi-value hl-yellow" id="kpi-val-loss">--</span>
+          </div>
+          <span class="kpi-hint">Validation Loss</span>
+        </div>
+      </div>
+
+      <!-- Monitor Split (Chart & Console) -->
+      <div class="monitor-split">
+        <!-- Chart Box -->
+        <div class="panel-section">
+          <div class="section-header flex-between">
+            <div class="section-title">
+              <span>Live Loss Metrics</span>
+            </div>
+            <div class="section-controls">
+              <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="resetChartZoom()">Reset Zoom</button>
+              <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="toggleLogScale()" id="btn-toggle-log">Log Scale</button>
+            </div>
+          </div>
+          <div class="section-body chart-wrapper">
+            <canvas id="lossChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Terminal Box -->
+        <div class="panel-section">
+          <div class="section-header flex-between">
+            <div class="section-title">
+              <span>Terminal Output</span>
+            </div>
+            <div class="section-controls">
+              <label class="vsc-checkbox-label">
+                <input type="checkbox" id="autoscroll-toggle" checked>
+                <span>Auto-scroll</span>
+              </label>
+              <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="clearTerminalLogs()">Clear</button>
+              <button class="vsc-btn vsc-btn-danger vsc-btn-xs" id="btn-stop-training" onclick="stopTraining()" disabled>Stop</button>
+            </div>
+          </div>
+          <div class="section-body terminal-wrapper" id="terminal-container">
+            <pre class="vsc-terminal" id="terminal-logs"><span class="log-dim">[Studio] System initialized and ready. Click "Start Training" to begin.</span></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: Model Checkpoints -->
+    <section class="tab-panel" id="checkpoints-tab">
+      <div class="panel-section">
+        <div class="section-header flex-between">
+          <div class="section-title">
+            <span>Model Checkpoints (outputs/checkpoints/)</span>
+          </div>
+          <button class="vsc-btn vsc-btn-secondary vsc-btn-sm" onclick="loadCheckpoints()">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 4v6h-6"></path>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+            <span>Refresh</span>
+          </button>
+        </div>
+        <div class="section-body">
+          <div class="table-scroll">
+            <table class="vsc-table" id="checkpoints-table">
+              <thead>
+                <tr>
+                  <th>Filename</th>
+                  <th>Path</th>
+                  <th>Size</th>
+                  <th>Created Time</th>
+                  <th>Tag</th>
+                  <th style="width: 220px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="checkpoints-tbody">
+                <tr><td colspan="6" class="cell-empty">Loading checkpoints...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: Quick Inference -->
+    <section class="tab-panel" id="inference-tab">
+      <div class="panel-grid-2">
+        <!-- Inference Settings -->
+        <div class="panel-section">
+          <div class="section-header">
+            <div class="section-title">
+              <span>Input & Inference Parameters</span>
+            </div>
+          </div>
+          <div class="section-body">
+            <div class="form-row">
+              <label>Upload Audio File (.wav)</label>
+              <div class="vsc-dropzone" id="audio-drop-zone">
+                <svg class="drop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                <p>Drag & drop .wav file here, or <span class="hl-blue">browse</span></p>
+                <input type="file" id="audio-file-input" accept=".wav,.flac,.mp3" style="display:none">
+                <span class="selected-file-label" id="selected-file-name">No file selected</span>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <label>Or Select Example Audio</label>
+              <select id="example-audio-select" class="vsc-select" onchange="onSelectExampleAudio()">
+                <option value="">-- Choose Example Audio --</option>
+              </select>
+            </div>
+
+            <div class="form-cols-2">
+              <div class="form-row">
+                <label for="infer-threshold-slider">
+                  <span>Detection Threshold</span>
+                  <span class="vsc-badge" id="infer-threshold-display">0.3</span>
+                </label>
+                <input type="range" id="infer-threshold-slider" class="vsc-slider" min="0.05" max="0.95" step="0.05" value="0.3" oninput="updateRangeDisplay('infer-threshold-slider', 'infer-threshold-display')">
+              </div>
+
+              <div class="form-row">
+                <label for="infer-duration-slider">
+                  <span>Max Duration (s)</span>
+                  <span class="vsc-badge" id="infer-duration-display">3.0s</span>
+                </label>
+                <input type="range" id="infer-duration-slider" class="vsc-slider" min="0.5" max="10.0" step="0.5" value="3.0" oninput="updateRangeDisplay('infer-duration-slider', 'infer-duration-display', 's')">
+              </div>
+            </div>
+
+            <div class="action-footer">
+              <button id="btn-run-inference" class="vsc-btn vsc-btn-primary vsc-btn-block" onclick="runInference()">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                <span>Run Detection & Generate Spectrogram</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Spectrogram Output & Player -->
+        <div class="panel-section">
+          <div class="section-header flex-between">
+            <div class="section-title">
+              <span>Spectrogram & Bounding Boxes</span>
+            </div>
+            <span class="vsc-pill-green" id="detection-count-badge">0 calls detected</span>
+          </div>
+          <div class="section-body">
+            <div class="spectrogram-box" id="spectrogram-container">
+              <div class="spec-placeholder" id="empty-spec-placeholder">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="spec-ph-icon">
+                  <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+                  <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+                </svg>
+                <span>Run inference to render the echolocation spectrogram</span>
+              </div>
+              <img id="spectrogram-img" class="spectrogram-image" style="display:none;" alt="Spectrogram">
+            </div>
+
+            <div class="audio-control-bar" id="audio-player-box" style="display:none;">
+              <audio id="audio-player" controls class="vsc-audio-player"></audio>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detections Table -->
+      <div class="panel-section" style="margin-top: 10px;">
+        <div class="section-header flex-between">
+          <div class="section-title">
+            <span>Call Detections Detail</span>
+          </div>
+          <div class="btn-cluster">
+            <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="exportDetectionsCSV()">Export CSV</button>
+            <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="exportDetectionsJSON()">Export JSON</button>
+          </div>
+        </div>
+        <div class="section-body">
+          <div class="table-scroll">
+            <table class="vsc-table" id="detections-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Species Class</th>
+                  <th>Start Time (s)</th>
+                  <th>End Time (s)</th>
+                  <th>Duration (ms)</th>
+                  <th>Freq Range (kHz)</th>
+                  <th>Confidence</th>
+                </tr>
+              </thead>
+              <tbody id="detections-tbody">
+                <tr><td colspan="7" class="cell-empty">No inference performed yet</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Script -->
+  <script src="app.js"></script>
+</body>
+</html>
