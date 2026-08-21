@@ -125,12 +125,31 @@ function updateRangeDisplay(sliderId, displayId, unit = '') {
 
 function applyPresetMode(mode) {
   const slider = document.getElementById('epochs-slider');
-  if (mode === 'quick') {
+  const batchSelect = document.getElementById('train-batch-size');
+  const precSelect = document.getElementById('train-precision');
+  const trainInput = document.getElementById('train-dataset-input');
+  const valInput = document.getElementById('val-dataset-input');
+  const targetsInput = document.getElementById('targets-input');
+
+  if (mode === 'test_data_4gb') {
+    slider.value = 20;
+    if (batchSelect) batchSelect.value = '4';
+    if (precSelect) precSelect.value = '16-mixed';
+    if (trainInput) trainInput.value = 'Test_data/dataset.yaml';
+    if (valInput) valInput.value = 'Test_data/dataset.yaml';
+    if (targetsInput) targetsInput.value = 'Test_data/targets.yaml';
+  } else if (mode === 'quick') {
     slider.value = 5;
+    if (batchSelect) batchSelect.value = '4';
+    if (precSelect) precSelect.value = '16-mixed';
   } else if (mode === 'standard') {
     slider.value = 100;
+    if (batchSelect) batchSelect.value = '4';
+    if (precSelect) precSelect.value = '16-mixed';
   } else if (mode === 'deep') {
     slider.value = 200;
+    if (batchSelect) batchSelect.value = '4';
+    if (precSelect) precSelect.value = '16-mixed';
   }
   updateRangeDisplay('epochs-slider', 'epochs-display');
 }
@@ -418,6 +437,59 @@ async function startTraining() {
     return;
   }
 
+  const batch_size = parseInt(document.getElementById('train-batch-size').value) || 4;
+  const precision = document.getElementById('train-precision').value || '16-mixed';
+  const lr = parseFloat(document.getElementById('train-lr').value) || 0.001;
+  const optimizerName = document.getElementById('train-optimizer').value || 'adam';
+  const schedulerName = document.getElementById('train-scheduler').value || 'cosine_annealing';
+  const checkValEvery = parseInt(document.getElementById('val-check-interval').value) || 1;
+
+  let optimizerConfig;
+  if (optimizerName === 'adamw') {
+    optimizerConfig = {
+      name: 'import',
+      target: 'torch.optim.AdamW',
+      arguments: {
+        lr: lr,
+        weight_decay: 0.01,
+      },
+    };
+  } else if (optimizerName === 'sgd') {
+    optimizerConfig = {
+      name: 'import',
+      target: 'torch.optim.SGD',
+      arguments: {
+        lr: lr,
+        momentum: 0.9,
+      },
+    };
+  } else {
+    optimizerConfig = {
+      name: 'adam',
+      learning_rate: lr,
+    };
+  }
+
+  const training_config = {
+    trainer: {
+      precision: precision,
+      max_epochs: num_epochs,
+      check_val_every_n_epoch: checkValEvery,
+    },
+    train_loader: {
+      batch_size: batch_size,
+      shuffle: true,
+    },
+    optimizer: optimizerConfig,
+  };
+
+  if (schedulerName !== 'none') {
+    training_config.scheduler = {
+      name: schedulerName,
+      t_max: num_epochs,
+    };
+  }
+
   const { audio_config, preprocess_config } = getPreprocessingConfigPayload();
 
   const payload = {
@@ -432,6 +504,7 @@ async function startTraining() {
     experiment_name,
     audio_config,
     preprocess_config,
+    training_config,
   };
 
   try {

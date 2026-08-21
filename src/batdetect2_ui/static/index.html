@@ -100,8 +100,9 @@
                 <span class="req">*</span>
               </label>
               <div class="input-group">
-                <input type="text" id="train-dataset-input" class="vsc-input" value="example_data/dataset.yaml" placeholder="example_data/dataset.yaml">
-                <button class="vsc-btn vsc-btn-secondary" onclick="setPreset('train-dataset-input', 'example_data/dataset.yaml')">Example</button>
+                <input type="text" id="train-dataset-input" class="vsc-input" value="Test_data/dataset.yaml" placeholder="Test_data/dataset.yaml">
+                <button class="vsc-btn vsc-btn-primary vsc-btn-xs" onclick="setPreset('train-dataset-input', 'Test_data/dataset.yaml')">Test_data</button>
+                <button class="vsc-btn vsc-btn-secondary vsc-btn-xs" onclick="setPreset('train-dataset-input', 'example_data/dataset.yaml')">Example</button>
               </div>
             </div>
 
@@ -110,8 +111,9 @@
                 <span>Validation Dataset (YAML)</span>
               </label>
               <div class="input-group">
-                <input type="text" id="val-dataset-input" class="vsc-input" value="example_data/dataset.yaml" placeholder="example_data/dataset.yaml">
-                <button class="vsc-btn vsc-btn-secondary" onclick="setPreset('val-dataset-input', 'example_data/dataset.yaml')">Example</button>
+                <input type="text" id="val-dataset-input" class="vsc-input" value="Test_data/dataset.yaml" placeholder="Test_data/dataset.yaml">
+                <button class="vsc-btn vsc-btn-primary vsc-btn-xs" onclick="setPreset('val-dataset-input', 'Test_data/dataset.yaml')">Test_data</button>
+                <button class="vsc-btn vsc-btn-secondary vsc-btn-xs" onclick="setPreset('val-dataset-input', 'example_data/dataset.yaml')">Example</button>
               </div>
             </div>
 
@@ -120,8 +122,9 @@
                 <span>Target Categories (YAML)</span>
               </label>
               <div class="input-group">
-                <input type="text" id="targets-input" class="vsc-input" value="example_data/targets.yaml" placeholder="example_data/targets.yaml">
-                <button class="vsc-btn vsc-btn-secondary" onclick="setPreset('targets-input', 'example_data/targets.yaml')">Example</button>
+                <input type="text" id="targets-input" class="vsc-input" value="Test_data/targets.yaml" placeholder="Test_data/targets.yaml">
+                <button class="vsc-btn vsc-btn-primary vsc-btn-xs" onclick="setPreset('targets-input', 'Test_data/targets.yaml')">Test_data</button>
+                <button class="vsc-btn vsc-btn-secondary vsc-btn-xs" onclick="setPreset('targets-input', 'example_data/targets.yaml')">Example</button>
               </div>
             </div>
 
@@ -146,7 +149,7 @@
           <div class="section-header">
             <div class="section-title">
               <span class="step-num">2</span>
-              <span>Hyperparameter Tuning</span>
+              <span>Training Hyperparameters (GPU / Memory Tuning)</span>
             </div>
           </div>
           <div class="section-body">
@@ -154,16 +157,82 @@
               <div class="form-row">
                 <label for="epochs-slider">
                   <span>Max Epochs</span>
-                  <span class="vsc-badge" id="epochs-display">100</span>
+                  <span class="vsc-badge" id="epochs-display">20</span>
                 </label>
-                <input type="range" id="epochs-slider" class="vsc-slider" min="1" max="500" value="100" oninput="updateRangeDisplay('epochs-slider', 'epochs-display')">
+                <input type="range" id="epochs-slider" class="vsc-slider" min="1" max="500" value="20" oninput="updateRangeDisplay('epochs-slider', 'epochs-display')">
               </div>
 
+              <div class="form-row">
+                <label for="train-batch-size">
+                  <span>Batch Size (4 for 4GB VRAM)</span>
+                </label>
+                <select id="train-batch-size" class="vsc-select">
+                  <option value="1">1 (Ultra-low VRAM)</option>
+                  <option value="2">2 (Very low VRAM)</option>
+                  <option value="4" selected>4 (Recommended for 4GB GPU)</option>
+                  <option value="8">8 (Default / 8GB+ GPU)</option>
+                  <option value="16">16 (High VRAM)</option>
+                  <option value="32">32 (Large Batch)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-cols-2">
+              <div class="form-row">
+                <label for="train-precision">
+                  <span>Precision (Mixed Precision)</span>
+                </label>
+                <select id="train-precision" class="vsc-select">
+                  <option value="16-mixed" selected>16-mixed (FP16 Fast / 50% VRAM)</option>
+                  <option value="32">32 (FP32 Full Precision)</option>
+                  <option value="bf16-mixed">bf16-mixed (BFloat16)</option>
+                </select>
+              </div>
+
+              <div class="form-row">
+                <label for="train-lr">
+                  <span>Learning Rate</span>
+                </label>
+                <input type="number" id="train-lr" class="vsc-input" value="0.001" step="0.0001" min="0.00001">
+              </div>
+            </div>
+
+            <div class="form-cols-2">
+              <div class="form-row">
+                <label for="train-optimizer">
+                  <span>Optimizer</span>
+                </label>
+                <select id="train-optimizer" class="vsc-select">
+                  <option value="adam" selected>Adam</option>
+                  <option value="adamw">AdamW</option>
+                  <option value="sgd">SGD</option>
+                </select>
+              </div>
+
+              <div class="form-row">
+                <label for="train-scheduler">
+                  <span>LR Scheduler</span>
+                </label>
+                <select id="train-scheduler" class="vsc-select">
+                  <option value="cosine_annealing" selected>Cosine Annealing</option>
+                  <option value="none">None / Constant</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-cols-2">
               <div class="form-row">
                 <label for="seed-input">
                   <span>Random Seed</span>
                 </label>
                 <input type="number" id="seed-input" class="vsc-input" value="42">
+              </div>
+
+              <div class="form-row">
+                <label for="val-check-interval">
+                  <span>Check Val Every N Epoch</span>
+                </label>
+                <input type="number" id="val-check-interval" class="vsc-input" value="1" min="1">
               </div>
             </div>
 
@@ -187,9 +256,10 @@
             <div class="preset-strip">
               <span class="preset-label">Presets:</span>
               <div class="btn-cluster">
-                <button class="vsc-btn vsc-btn-outline vsc-btn-sm" onclick="applyPresetMode('quick')">Quick Test (5 Epochs)</button>
-                <button class="vsc-btn vsc-btn-outline vsc-btn-sm" onclick="applyPresetMode('standard')">Standard (100 Epochs)</button>
-                <button class="vsc-btn vsc-btn-outline vsc-btn-sm" onclick="applyPresetMode('deep')">Deep Train (200 Epochs)</button>
+                <button class="vsc-btn vsc-btn-primary vsc-btn-sm" onclick="applyPresetMode('test_data_4gb')">🦇 Test_data (4GB GPU, 20 Ep)</button>
+                <button class="vsc-btn vsc-btn-outline vsc-btn-sm" onclick="applyPresetMode('quick')">Quick Test (5 Ep)</button>
+                <button class="vsc-btn vsc-btn-outline vsc-btn-sm" onclick="applyPresetMode('standard')">Standard (100 Ep)</button>
+                <button class="vsc-btn vsc-btn-outline vsc-btn-sm" onclick="applyPresetMode('deep')">Deep Train (200 Ep)</button>
               </div>
             </div>
 

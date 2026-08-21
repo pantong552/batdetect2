@@ -94,6 +94,7 @@ class TrainingManager:
         run_name: Optional[str] = None,
         audio_config: Optional[Dict[str, Any]] = None,
         preprocess_config: Optional[Dict[str, Any]] = None,
+        training_config: Optional[Dict[str, Any]] = None,
         custom_args: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         if self.status == "training":
@@ -122,6 +123,7 @@ class TrainingManager:
             "run_name": run_name or f"run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
             "audio_config": audio_config,
             "preprocess_config": preprocess_config,
+            "training_config": training_config,
         }
 
         # Build CLI command
@@ -152,7 +154,7 @@ class TrainingManager:
         if run_name:
             cmd.extend(["--run-name", run_name])
 
-        # If audio_config or preprocess_config is provided and model_path is None, create configs
+        # If audio_config or preprocess_config or training_config is provided, create configs
         config_gen_dir = self.workspace_root / "outputs" / "generated_configs"
         config_gen_dir.mkdir(parents=True, exist_ok=True)
 
@@ -181,6 +183,13 @@ class TrainingManager:
             with open(model_yaml_path, "w", encoding="utf-8") as f:
                 yaml.dump(model_dict, f, default_flow_style=False)
             cmd.extend(["--model-config", str(model_yaml_path.relative_to(self.workspace_root)).replace("\\", "/")])
+
+        if training_config:
+            import yaml
+            train_yaml_path = config_gen_dir / "training_config.yaml"
+            with open(train_yaml_path, "w", encoding="utf-8") as f:
+                yaml.dump(training_config, f, default_flow_style=False)
+            cmd.extend(["--training-config", str(train_yaml_path.relative_to(self.workspace_root)).replace("\\", "/")])
 
         if custom_args:
             cmd.extend(custom_args)

@@ -126,6 +126,7 @@ async def start_training(payload: Dict[str, Any]):
     run_name = payload.get("run_name")
     audio_config = payload.get("audio_config")
     preprocess_config = payload.get("preprocess_config")
+    training_config = payload.get("training_config")
 
     res = await training_manager.start_training(
         train_dataset=train_dataset,
@@ -140,6 +141,7 @@ async def start_training(payload: Dict[str, Any]):
         run_name=run_name,
         audio_config=audio_config,
         preprocess_config=preprocess_config,
+        training_config=training_config,
     )
     if not res["success"]:
         raise HTTPException(status_code=400, detail=res["message"])
