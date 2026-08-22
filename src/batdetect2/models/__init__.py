@@ -312,6 +312,20 @@ def build_model_with_new_targets(
         backbone=model.detector.backbone,
     )
 
+    # 繼承預訓練模型已學好的 BBoxHead (size_head) 權重，避免微調時框尺寸崩塌為 0
+    if hasattr(model.detector, "size_head") and hasattr(detector, "size_head"):
+        try:
+            src_state = model.detector.size_head.state_dict()
+            tgt_state = detector.size_head.state_dict()
+            compatible_state = {
+                k: v
+                for k, v in src_state.items()
+                if k in tgt_state and v.shape == tgt_state[k].shape
+            }
+            detector.size_head.load_state_dict(compatible_state, strict=False)
+        except Exception:
+            pass
+
     return Model(
         detector=detector,
         postprocessor=model.postprocessor,

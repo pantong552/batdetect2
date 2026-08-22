@@ -15,8 +15,8 @@ def main():
     url = f"http://{args.host}:{args.port}"
 
     print(f"\n========================================================")
-    print(f" 🦇 BatDetect2 Training Studio 正在啟動...")
-    print(f" 🌐 介面網址: {url}")
+    print(f" [*] BatDetect2 Training Studio 正在啟動...")
+    print(f" [>] 介面網址: {url}")
     print(f"========================================================\n")
 
     if not args.no_browser:

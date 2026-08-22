@@ -335,14 +335,24 @@ async def run_prediction(
     import batdetect2.plotting.legacy.plot as plot
 
     target_audio_path = None
+    audio_stream_rel_path = None
+
     if file and file.filename:
+        UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
         save_path = UPLOADS_DIR / file.filename
         content = await file.read()
         with open(save_path, "wb") as f:
             f.write(content)
-        target_audio_path = str(save_path)
+            f.flush()
+            os.fsync(f.fileno())
+        target_audio_path = str(save_path.resolve())
+        audio_stream_rel_path = str(save_path.relative_to(WORKSPACE_ROOT)).replace("\\", "/")
     elif preset_path:
-        target_audio_path = str(WORKSPACE_ROOT / preset_path)
+        preset_file = (WORKSPACE_ROOT / preset_path).resolve()
+        if not preset_file.exists():
+            raise HTTPException(status_code=404, detail=f"找不到指定的範例音訊檔案: {preset_path}")
+        target_audio_path = str(preset_file)
+        audio_stream_rel_path = preset_path
     else:
         raise HTTPException(status_code=400, detail="請提供音訊檔案或選擇範例檔案！")
 
@@ -448,8 +458,22 @@ async def run_prediction(
         ax = fig.add_subplot(111)
         ax.set_facecolor("#181818")
         
-        # 繪製頻譜與在音訊長度範圍內的所有標註
-        plot_dets = [d for d in detections if d.get("start_time", 0) <= audio_dur]
+        # 繪製頻譜與在音訊長度範圍內的所有標註 (嚴格過濾門檻與頂部/底部邊緣偽影)
+        plot_dets = []
+        max_valid_freq = run_config.get("max_freq", 128000) * 0.95
+        min_valid_freq = run_config.get("min_freq", 10000) * 1.05
+        
+        for d in detections:
+            if d.get("start_time", 0) > audio_dur:
+                continue
+            det_score = float(d.get("det_prob", d.get("class_prob", 0.0)))
+            if detection_threshold is not None and det_score < detection_threshold:
+                continue
+            # 排除壓在頂部或底部的 STFT 頻率裁切偽影
+            if float(d.get("high_freq", 0.0)) > max_valid_freq and float(d.get("low_freq", 0.0)) > max_valid_freq * 0.85:
+                continue
+            plot_dets.append(d)
+
         plot.spectrogram_with_detections(spec, plot_dets, config=run_config, ax=ax)
         
         # 鎖定 X/Y 軸範圍與時頻圖完全一致
@@ -471,18 +495,30 @@ async def run_prediction(
         buf.seek(0)
         img_b64 = base64.b64encode(buf.read()).decode("utf-8")
 
-        # 格式化 detections
+        # 格式化 detections 並嚴格依據 detection_threshold 與邊界偽影過濾
         formatted_detections = []
         for i, d in enumerate(detections):
+            det_score = float(d.get("det_prob", d.get("class_prob", 0.0)))
+            cls_score = float(d.get("class_prob", det_score))
+            
+            # 若後端推論時未過濾，在此做嚴格門檻過濾
+            if detection_threshold is not None and det_score < detection_threshold:
+                continue
+
+            # 排除壓在頂部的 STFT 頻率裁切偽影
+            if float(d.get("high_freq", 0.0)) > max_valid_freq and float(d.get("low_freq", 0.0)) > max_valid_freq * 0.85:
+                continue
+
             formatted_detections.append({
-                "id": i + 1,
+                "id": len(formatted_detections) + 1,
                 "species": d.get("class", "Bat"),
                 "start_time": round(float(d.get("start_time", 0.0)), 4),
                 "end_time": round(float(d.get("end_time", 0.0)), 4),
                 "duration_ms": round((float(d.get("end_time", 0.0)) - float(d.get("start_time", 0.0))) * 1000, 1),
                 "low_freq": round(float(d.get("low_freq", 0.0)) / 1000, 1),  # kHz
                 "high_freq": round(float(d.get("high_freq", 0.0)) / 1000, 1),  # kHz
-                "confidence": round(float(d.get("class_prob", d.get("det_prob", 0.0))), 3),
+                "confidence": round(det_score, 3),  # 叫聲偵測置信度 (例如 85.6%)
+                "class_prob": round(cls_score, 3),  # 物種分類置信度
                 "event": d.get("event", "Echolocation"),
             })
 
@@ -492,6 +528,7 @@ async def run_prediction(
             "detections": formatted_detections,
             "total_detections": len(formatted_detections),
             "audio_duration": round(len(audio) / run_config["target_samp_rate"], 2),
+            "audio_stream_path": audio_stream_rel_path,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"推論失敗: {str(e)}")

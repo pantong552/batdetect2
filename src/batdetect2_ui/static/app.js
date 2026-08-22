@@ -875,7 +875,10 @@ async function runInference() {
 
     const playerBox = document.getElementById('audio-player-box');
     const player = document.getElementById('audio-player');
-    if (exampleVal) {
+    if (data.audio_stream_path) {
+      player.src = `/api/audio?path=${encodeURIComponent(data.audio_stream_path)}`;
+      playerBox.style.display = 'block';
+    } else if (exampleVal) {
       player.src = `/api/audio?path=${encodeURIComponent(exampleVal)}`;
       playerBox.style.display = 'block';
     }

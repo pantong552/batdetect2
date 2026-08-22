@@ -69,8 +69,16 @@ class Postprocessor(torch.nn.Module, PostprocessorProtocol):
             else detection_threshold
         )
 
+        # 消除 STFT 頻率裁切與 PCEN 邊緣效應在時頻圖頂部/底部產生的偽影活化線
+        det_probs = output.detection_probs.detach().clone()
+        height = det_probs.shape[-2]
+        edge_margin_top = max(1, int(height * 0.035))  # 頂部約 3.5% 邊界
+        edge_margin_bottom = max(1, int(height * 0.015))  # 底部約 1.5% 邊界
+        det_probs[..., :edge_margin_bottom, :] = 0.0
+        det_probs[..., (height - edge_margin_top):, :] = 0.0
+
         detection_heatmap = non_max_suppression(
-            output.detection_probs.detach(),
+            det_probs,
             kernel_size=self.nms_kernel_size,
         )
 

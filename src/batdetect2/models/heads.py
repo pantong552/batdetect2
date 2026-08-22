@@ -69,6 +69,12 @@ class ClassifierHead(nn.Module):
             padding=0,
         )
 
+        # 針對極度不平衡的時頻圖 (98% 為背景) 採用 Focal Loss 先驗偏置初始化 (Prior Initialization)
+        # 前景物種偏置設為負值 (-2.0)，背景通道設為正值 (+2.0)
+        # 確保在初始階段所有空白背景與高頻裁切邊界區域的蝙蝠偵測機率天然趨近於 0
+        nn.init.constant_(self.classifier.bias[:-1], -2.0)
+        nn.init.constant_(self.classifier.bias[-1], 2.0)
+
     def forward(self, features: torch.Tensor) -> torch.Tensor:
         """Compute per-class probabilities from backbone features.
 
