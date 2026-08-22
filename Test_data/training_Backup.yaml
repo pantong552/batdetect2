@@ -1,0 +1,16 @@
+trainer:
+  precision: "16-mixed"
+  max_epochs: 20
+  check_val_every_n_epoch: 1
+
+train_loader:
+  batch_size: 4
+  shuffle: true
+
+optimizer:
+  name: adam
+  learning_rate: 0.001
+
+scheduler:
+  name: cosine_annealing
+  t_max: 20

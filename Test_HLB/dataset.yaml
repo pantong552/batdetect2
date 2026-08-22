@@ -1,8 +1,0 @@
-name: example dataset
-description: Only for demonstration purposes
-sources:
-  - format: batdetect2
-    name: HLB data
-    description: Test data with HM LP HLB LBB
-    annotations_dir: Test_HLB/anns
-    audio_dir: Test_HLB/audio
