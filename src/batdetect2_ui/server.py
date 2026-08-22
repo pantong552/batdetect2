@@ -124,6 +124,7 @@ async def start_training(payload: Dict[str, Any]):
     seed = int(payload.get("seed", 42))
     experiment_name = payload.get("experiment_name", "batdetect2_studio")
     run_name = payload.get("run_name")
+    trainable = payload.get("trainable", "heads")
     audio_config = payload.get("audio_config")
     preprocess_config = payload.get("preprocess_config")
     training_config = payload.get("training_config")
@@ -139,6 +140,7 @@ async def start_training(payload: Dict[str, Any]):
         seed=seed,
         experiment_name=experiment_name,
         run_name=run_name,
+        trainable=trainable,
         audio_config=audio_config,
         preprocess_config=preprocess_config,
         training_config=training_config,
@@ -227,9 +229,18 @@ async def list_experiments():
 @app.get("/api/experiments/{exp_id}")
 async def get_experiment_details(exp_id: str):
     """讀取指定實驗的 metrics.csv 曲線數據與 hparams.yaml 超參數設定。"""
-    exp_dir = WORKSPACE_ROOT / "outputs" / "logs" / exp_id
-    if not exp_dir.exists():
-        raise HTTPException(status_code=404, detail="找不到該實驗日誌！")
+    logs_dir = WORKSPACE_ROOT / "outputs" / "logs"
+    if exp_id == "latest":
+        # 自動搜尋最新修改的 version_X 資料夾
+        versions = [p for p in logs_dir.iterdir() if p.is_dir() and p.name.startswith("version_")]
+        if not versions:
+            raise HTTPException(status_code=404, detail="尚無任何實驗日誌！")
+        exp_dir = max(versions, key=lambda p: p.stat().st_mtime)
+        exp_id = exp_dir.name
+    else:
+        exp_dir = logs_dir / exp_id
+        if not exp_dir.exists():
+            raise HTTPException(status_code=404, detail="找不到該實驗日誌！")
 
     metrics_data = []
     columns = []
@@ -314,6 +325,7 @@ async def stream_audio(path: str):
 async def run_prediction(
     file: Optional[UploadFile] = File(None),
     preset_path: Optional[str] = Form(None),
+    model_path: Optional[str] = Form(None),
     detection_threshold: float = Form(0.3),
     max_duration: float = Form(3.0),
     time_expansion: float = Form(1.0),
@@ -335,33 +347,115 @@ async def run_prediction(
         raise HTTPException(status_code=400, detail="請提供音訊檔案或選擇範例檔案！")
 
     try:
-        # 設定推論 config
+        model_obj = api.MODEL
         run_config = api.get_config(
             detection_threshold=detection_threshold,
             max_duration=max_duration,
             time_expansion=time_expansion,
         )
 
-        results = api.process_file(target_audio_path, config=run_config)
-        detections = results.get("pred_dict", {}).get("annotation", [])
+        if model_path and model_path.strip():
+            ckpt_str = model_path.strip()
+            if ckpt_str.endswith(".pth.tar"):
+                full_model_path = str((WORKSPACE_ROOT / ckpt_str).resolve()) if not Path(ckpt_str).is_absolute() else ckpt_str
+                loaded_model, params = api.load_model(full_model_path, device=api.DEVICE)
+                model_obj = loaded_model
+                run_config = {**run_config, **params}
 
-        # 產生頻譜圖
-        audio = api.load_audio(
-            target_audio_path,
-            max_duration=run_config["max_duration"],
-            time_exp_fact=run_config["time_expansion"],
-            target_samp_rate=run_config["target_samp_rate"],
-        )
-        spec = api.generate_spectrogram(audio, config=run_config)
+        # 若 max_duration <= 0 則載入整首音訊不限長度
+        load_max_dur = max_duration if (max_duration and max_duration > 0) else None
 
+        # 讀取音訊檔案真實採樣率 (Sampling Rate)
+        import soundfile as sf
+        audio_info = sf.info(target_audio_path)
+        actual_sr = audio_info.samplerate
+
+        detections = []
+        spec = None
+
+        if model_path and model_path.strip() and model_path.strip().endswith(".ckpt"):
+            # 使用 BatDetect2API V2 原生推論管線
+            from batdetect2.api_v2 import BatDetect2API
+            full_ckpt_path = str((WORKSPACE_ROOT / model_path.strip()).resolve()) if not Path(model_path.strip()).is_absolute() else model_path.strip()
+            v2_api = BatDetect2API.from_checkpoint(full_ckpt_path)
+            
+            # 執行推論
+            clip_res = v2_api.process_file(target_audio_path, detection_threshold=detection_threshold)
+            
+            # 依據 wav 檔案自身真實 sampling rate 或模型需求動態載入音訊
+            target_sr = actual_sr
+            run_config["target_samp_rate"] = target_sr
+            # 若採樣率高於 256k (例如 384k/500k)，動態更新時頻圖頻率上限為 Nyquist (sr // 2) 或保留配置
+            if target_sr > 256000:
+                run_config["max_freq"] = max(run_config.get("max_freq", 120000), target_sr // 2)
+
+            audio = api.load_audio(
+                target_audio_path,
+                max_duration=load_max_dur,
+                time_exp_fact=time_expansion,
+                target_samp_rate=target_sr,
+            )
+            spec = api.generate_spectrogram(audio, samp_rate=target_sr, config=run_config)
+
+            # 將 Soundevent / V2 Detections 轉換為統一格式
+            for det in clip_res.detections:
+                geom = det.geometry
+                top_class = v2_api.get_top_class_name(det)
+                
+                if hasattr(geom, "coordinates"):
+                    coords = geom.coordinates
+                    start_t, low_f, end_t, high_f = float(coords[0]), float(coords[1]), float(coords[2]), float(coords[3])
+                elif hasattr(geom, "start_time"):
+                    start_t, low_f = float(geom.start_time), float(geom.low_freq)
+                    end_t, high_f = float(geom.end_time), float(geom.high_freq)
+                else:
+                    continue
+
+                detections.append({
+                    "start_time": round(start_t, 4),
+                    "end_time": round(end_t, 4),
+                    "low_freq": round(low_f, 1),
+                    "high_freq": round(high_f, 1),
+                    "class": top_class,
+                    "class_prob": round(float(np.max(det.class_scores)), 3),
+                    "det_prob": round(float(det.detection_score), 3),
+                    "event": "Echolocation",
+                })
+        else:
+            # 使用 Legacy API 推論
+            target_sr = actual_sr
+            run_config["target_samp_rate"] = target_sr
+            if target_sr > 256000:
+                run_config["max_freq"] = max(run_config.get("max_freq", 120000), target_sr // 2)
+
+            results = api.process_file(target_audio_path, model=model_obj, config=run_config)
+            detections = results.get("pred_dict", {}).get("annotation", [])
+            audio = api.load_audio(
+                target_audio_path,
+                max_duration=load_max_dur,
+                time_exp_fact=run_config["time_expansion"],
+                target_samp_rate=target_sr,
+            )
+            spec = api.generate_spectrogram(audio, samp_rate=target_sr, config=run_config)
+
+        audio_dur = len(audio) / run_config["target_samp_rate"]
+        
+        # 動態計算圖像寬度 (每秒約 5 inches，最小 14 inches)，高度設為 7.5 inches 以適應 600px 高解析度
+        calc_width = max(14.0, min(audio_dur * 5.0, 100.0))
+        
         plt.close("all")
-        fig = plt.figure(1, figsize=(14, 4.2), dpi=120, facecolor="#181818")
+        fig = plt.figure(1, figsize=(calc_width, 7.5), dpi=120, facecolor="#181818")
         ax = fig.add_subplot(111)
         ax.set_facecolor("#181818")
         
-        # 繪製頻譜與標註
-        plot.spectrogram_with_detections(spec, detections, ax=ax)
+        # 繪製頻譜與在音訊長度範圍內的所有標註
+        plot_dets = [d for d in detections if d.get("start_time", 0) <= audio_dur]
+        plot.spectrogram_with_detections(spec, plot_dets, config=run_config, ax=ax)
         
+        # 鎖定 X/Y 軸範圍與時頻圖完全一致
+        ax.set_xlim(0, audio_dur)
+        ax.set_ylim(run_config["min_freq"], run_config["max_freq"])
+
         # 美化刻度樣式 (VS Code Dark)
         ax.tick_params(colors="#858585", labelsize=8.5)
         ax.xaxis.label.set_color("#858585")

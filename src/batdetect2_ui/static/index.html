@@ -11,7 +11,7 @@
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Main Stylesheet (VS Code Dark Charcoal Theme) -->
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260822_3">
 </head>
 <body class="vscode-theme">
   <!-- Title Bar -->
@@ -132,7 +132,23 @@
               <label for="base-model-input">
                 <span>Base Model / Checkpoint (Optional for Fine-tuning)</span>
               </label>
-              <input type="text" id="base-model-input" class="vsc-input" placeholder="Leave blank for train from scratch, or enter .ckpt path">
+              <div class="input-group">
+                <input type="text" id="base-model-input" class="vsc-input" placeholder="Leave blank for train from scratch, or enter .ckpt path">
+                <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="setPreset('base-model-input', 'src/batdetect2/models/checkpoints/batdetect2_uk_same.ckpt')">UK Pretrained (.ckpt)</button>
+                <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="setPreset('base-model-input', '')">Clear (Scratch)</button>
+              </div>
+            </div>
+
+            <div class="form-row" id="finetune-trainable-row">
+              <label for="finetune-trainable">
+                <span>Fine-tuning Scope (Trainable Layers)</span>
+              </label>
+              <select id="finetune-trainable" class="vsc-select">
+                <option value="heads" selected>heads (Recommended: Freeze Backbone, Train Heads)</option>
+                <option value="all">all (Full Fine-tuning: Update all model weights)</option>
+                <option value="classifier_head">classifier_head (Only Species Classification Head)</option>
+                <option value="size_head">size_head (Only Bounding Box Size Head)</option>
+              </select>
             </div>
 
             <div class="form-row">
@@ -214,18 +230,18 @@
                   <span>LR Scheduler</span>
                 </label>
                 <select id="train-scheduler" class="vsc-select">
-                  <option value="cosine_annealing" selected>Cosine Annealing</option>
+                  <option value="cosine_annealing" selected>Cosine Annealing (with Warmup)</option>
                   <option value="none">None / Constant</option>
                 </select>
               </div>
             </div>
 
             <div class="form-cols-2">
-              <div class="form-row">
-                <label for="seed-input">
-                  <span>Random Seed</span>
+              <div class="form-row" id="warmup-epochs-row">
+                <label for="warmup-epochs-input">
+                  <span>Warmup Epochs</span>
                 </label>
-                <input type="number" id="seed-input" class="vsc-input" value="42">
+                <input type="number" id="warmup-epochs-input" class="vsc-input" value="5" min="0" max="100" placeholder="5">
               </div>
 
               <div class="form-row">
@@ -236,7 +252,14 @@
               </div>
             </div>
 
-            <div class="form-cols-2">
+            <div class="form-cols-3">
+              <div class="form-row">
+                <label for="seed-input">
+                  <span>Random Seed</span>
+                </label>
+                <input type="number" id="seed-input" class="vsc-input" value="42">
+              </div>
+
               <div class="form-row">
                 <label for="train-workers-input">
                   <span>Train Workers</span>
@@ -249,6 +272,36 @@
                   <span>Val Workers</span>
                 </label>
                 <input type="number" id="val-workers-input" class="vsc-input" value="0" min="0" max="16">
+              </div>
+            </div>
+
+            <!-- Multi-task Loss Weights Configuration -->
+            <div class="form-row-group" style="margin-top: 10px; padding: 10px; background: rgba(255, 255, 255, 0.02); border: 1px solid #2d2d2d; border-radius: 4px;">
+              <div style="font-size: 11px; font-weight: 600; color: #4ec9b0; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+                <span>🎯 Multi-task Loss Weights (損失函數權重)</span>
+                <span style="font-size: 10px; color: #858585; font-weight: normal;">Tune size loss to fix tiny bounding boxes</span>
+              </div>
+              <div class="form-cols-3">
+                <div class="form-row">
+                  <label for="loss-det-weight">
+                    <span>Det Loss Weight</span>
+                  </label>
+                  <input type="number" id="loss-det-weight" class="vsc-input" value="1.0" step="0.1" min="0.0">
+                </div>
+
+                <div class="form-row">
+                  <label for="loss-cls-weight">
+                    <span>Cls Loss Weight</span>
+                  </label>
+                  <input type="number" id="loss-cls-weight" class="vsc-input" value="2.0" step="0.1" min="0.0">
+                </div>
+
+                <div class="form-row">
+                  <label for="loss-size-weight">
+                    <span style="color: #ce9178; font-weight: 600;">Size Loss Weight</span>
+                  </label>
+                  <input type="number" id="loss-size-weight" class="vsc-input" value="1.5" step="0.1" min="0.0" title="提高此權重可促使模型學習完整邊界框 (預設 0.1, 推薦 1.0~2.0)">
+                </div>
               </div>
             </div>
 
@@ -477,27 +530,27 @@
 
       <!-- Monitor Split (Chart & Console) -->
       <div class="monitor-split">
-        <!-- Chart Box -->
+        <!-- Chart Box (Expanded) -->
         <div class="panel-section">
           <div class="section-header flex-between">
             <div class="section-title">
-              <span>Live Loss Metrics</span>
+              <span>Live Loss Metrics (Epoch Progress)</span>
             </div>
             <div class="section-controls">
               <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="resetChartZoom()">Reset Zoom</button>
               <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="toggleLogScale()" id="btn-toggle-log">Log Scale</button>
             </div>
           </div>
-          <div class="section-body chart-wrapper">
+          <div class="section-body chart-wrapper" style="height: 380px;">
             <canvas id="lossChart"></canvas>
           </div>
         </div>
 
-        <!-- Terminal Box -->
+        <!-- Terminal Box (Expanded) -->
         <div class="panel-section">
           <div class="section-header flex-between">
             <div class="section-title">
-              <span>Terminal Output</span>
+              <span>Terminal Output & Progress</span>
             </div>
             <div class="section-controls">
               <label class="vsc-checkbox-label">
@@ -508,9 +561,39 @@
               <button class="vsc-btn vsc-btn-danger vsc-btn-xs" id="btn-stop-training" onclick="stopTraining()" disabled>Stop</button>
             </div>
           </div>
-          <div class="section-body terminal-wrapper" id="terminal-container">
+          <div class="section-body terminal-wrapper" id="terminal-container" style="height: 380px;">
             <pre class="vsc-terminal" id="terminal-logs"><span class="log-dim">[Studio] System initialized and ready. Click "Start Training" to begin.</span></pre>
           </div>
+        </div>
+      </div>
+
+      <!-- Live Dynamic Multi-Metric Curve Inspector (metrics.csv) -->
+      <div class="panel-section" style="margin-top: 14px;">
+        <div class="section-header flex-between">
+          <div class="section-title">
+            <span>Live Multi-Metric Curve Inspector (outputs/logs/ metrics.csv)</span>
+          </div>
+          <div class="section-controls">
+            <select id="live-metric-select" class="vsc-select vsc-btn-xs" style="width: 220px;" onchange="renderLiveSelectedMetric()">
+              <option value="total_loss">Total Loss (Train vs Val)</option>
+              <option value="classification_loss">Classification Loss (Train vs Val)</option>
+              <option value="detection_loss">Detection Loss (Train vs Val)</option>
+              <option value="size_loss">Bounding Box Size Loss (Train vs Val)</option>
+              <option value="mAP">Mean Average Precision (mAP)</option>
+              <option value="species_ap">Species AP Breakdown (All Classes)</option>
+            </select>
+            <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="toggleLiveLogScale()" id="btn-live-log">Log Scale</button>
+            <button class="vsc-btn vsc-btn-secondary vsc-btn-xs" onclick="refreshLiveMetricsData()">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 4v6h-6"></path>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+              </svg>
+              <span>Refresh Metrics</span>
+            </button>
+          </div>
+        </div>
+        <div class="section-body chart-wrapper" style="height: 420px;">
+          <canvas id="liveMetricsInspectorChart"></canvas>
         </div>
       </div>
     </section>
@@ -636,12 +719,13 @@
 
     <!-- TAB 5: Quick Inference -->
     <section class="tab-panel" id="inference-tab">
-      <div class="panel-grid-2">
-        <!-- Inference Settings -->
+      <!-- Top Control Section: Audio Input & Model Settings (2-Column Grid) -->
+      <div class="panel-grid-2" style="margin-bottom: 10px;">
+        <!-- Card 1: Audio Input Selection -->
         <div class="panel-section">
           <div class="section-header">
             <div class="section-title">
-              <span>Input & Inference Parameters</span>
+              <span>1. Audio Source Selection</span>
             </div>
           </div>
           <div class="section-body">
@@ -660,10 +744,32 @@
             </div>
 
             <div class="form-row">
-              <label>Or Select Example Audio</label>
+              <label for="example-audio-select">Or Select Example Audio</label>
               <select id="example-audio-select" class="vsc-select" onchange="onSelectExampleAudio()">
                 <option value="">-- Choose Example Audio --</option>
               </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Model & Threshold Parameters -->
+        <div class="panel-section">
+          <div class="section-header">
+            <div class="section-title">
+              <span>2. Model Checkpoint & Parameters</span>
+            </div>
+          </div>
+          <div class="section-body">
+            <div class="form-row">
+              <label for="infer-model-select">
+                <span>Select Model Checkpoint</span>
+              </label>
+              <div class="input-group">
+                <select id="infer-model-select" class="vsc-select">
+                  <option value="">Default Pretrained (UK Same / Net2DFast)</option>
+                </select>
+                <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="refreshInferenceModels()">Refresh Models</button>
+              </div>
             </div>
 
             <div class="form-cols-2">
@@ -677,14 +783,14 @@
 
               <div class="form-row">
                 <label for="infer-duration-slider">
-                  <span>Max Duration (s)</span>
-                  <span class="vsc-badge" id="infer-duration-display">3.0s</span>
+                  <span>Max Duration (0 = Full Audio)</span>
+                  <span class="vsc-badge" id="infer-duration-display">Full Audio</span>
                 </label>
-                <input type="range" id="infer-duration-slider" class="vsc-slider" min="0.5" max="10.0" step="0.5" value="3.0" oninput="updateRangeDisplay('infer-duration-slider', 'infer-duration-display', 's')">
+                <input type="range" id="infer-duration-slider" class="vsc-slider" min="0" max="30" step="1" value="0" oninput="updateDurationDisplay()">
               </div>
             </div>
 
-            <div class="action-footer">
+            <div class="action-footer" style="margin-top: 12px;">
               <button id="btn-run-inference" class="vsc-btn vsc-btn-primary vsc-btn-block" onclick="runInference()">
                 <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
                   <polygon points="5 3 19 12 5 21 5 3"></polygon>
@@ -694,36 +800,39 @@
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Spectrogram Output & Player -->
-        <div class="panel-section">
-          <div class="section-header flex-between">
-            <div class="section-title">
-              <span>Spectrogram & Bounding Boxes</span>
-            </div>
-            <span class="vsc-pill-green" id="detection-count-badge">0 calls detected</span>
+      <!-- Full-Width Spectrogram Output Card -->
+      <div class="panel-section" style="margin-bottom: 10px;">
+        <div class="section-header flex-between">
+          <div class="section-title">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px; height:14px; margin-right:4px;">
+              <path d="M2 10v3 M6 6v11 M10 3v18 M14 8v7 M18 5v13 M22 10v3" />
+            </svg>
+            <span>Full-Width Echolocation Spectrogram & Call Bounding Boxes</span>
           </div>
-          <div class="section-body">
-            <div class="spectrogram-box" id="spectrogram-container">
-              <div class="spec-placeholder" id="empty-spec-placeholder">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="spec-ph-icon">
-                  <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
-                  <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
-                </svg>
-                <span>Run inference to render the echolocation spectrogram</span>
-              </div>
-              <img id="spectrogram-img" class="spectrogram-image" style="display:none;" alt="Spectrogram">
+          <span class="vsc-pill-green" id="detection-count-badge">0 calls detected</span>
+        </div>
+        <div class="section-body">
+          <div class="spectrogram-box" id="spectrogram-container" style="min-height: 240px; width: 100%;">
+            <div class="spec-placeholder" id="empty-spec-placeholder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="spec-ph-icon">
+                <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+                <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+              </svg>
+              <span>Select audio and model, then run inference to render the full-width spectrogram</span>
             </div>
+            <img id="spectrogram-img" class="spectrogram-image" style="display:none; width: 100%;" alt="Spectrogram">
+          </div>
 
-            <div class="audio-control-bar" id="audio-player-box" style="display:none;">
-              <audio id="audio-player" controls class="vsc-audio-player"></audio>
-            </div>
+          <div class="audio-control-bar" id="audio-player-box" style="display:none; margin-top: 8px;">
+            <audio id="audio-player" controls class="vsc-audio-player"></audio>
           </div>
         </div>
       </div>
 
       <!-- Detections Table -->
-      <div class="panel-section" style="margin-top: 10px;">
+      <div class="panel-section">
         <div class="section-header flex-between">
           <div class="section-title">
             <span>Call Detections Detail</span>
@@ -758,6 +867,6 @@
   </main>
 
   <!-- Script -->
-  <script src="app.js?v=20260821_1"></script>
+  <script src="app.js?v=20260822_3"></script>
 </body>
 </html>

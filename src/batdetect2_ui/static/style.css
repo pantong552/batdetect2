@@ -759,21 +759,25 @@ body.vscode-theme {
 
 /* Spectrogram Box */
 .spectrogram-box {
-  min-height: 200px;
-  background: #121212;
+  height: 610px;
+  min-height: 610px;
+  background: #181818;
   border: 1px solid var(--vsc-border);
   border-radius: var(--radius-xs);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
+  display: block;
+  overflow-x: auto;
+  overflow-y: hidden;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4);
+  padding: 4px;
 }
 
 .spectrogram-image {
-  width: 100%;
-  height: auto;
+  min-width: 100%;
+  height: 600px !important;
+  max-height: 600px !important;
   display: block;
-  object-fit: contain;
+  object-fit: fill;
+  border-radius: 2px;
 }
 
 .spec-placeholder {

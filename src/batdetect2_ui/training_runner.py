@@ -92,6 +92,7 @@ class TrainingManager:
         seed: int = 42,
         experiment_name: Optional[str] = None,
         run_name: Optional[str] = None,
+        trainable: Optional[str] = "heads",
         audio_config: Optional[Dict[str, Any]] = None,
         preprocess_config: Optional[Dict[str, Any]] = None,
         training_config: Optional[Dict[str, Any]] = None,
@@ -110,11 +111,15 @@ class TrainingManager:
         self.latest_metrics = {}
         self.logs_buffer = []
 
+        is_finetune = bool(model_path and model_path.strip() and targets_config and targets_config.strip())
+
         self.current_config = {
+            "mode": "finetune" if is_finetune else "train",
             "train_dataset": train_dataset,
             "val_dataset": val_dataset,
             "targets_config": targets_config,
             "model_path": model_path,
+            "trainable": trainable if is_finetune else None,
             "num_epochs": num_epochs,
             "train_workers": train_workers,
             "val_workers": val_workers,
@@ -126,33 +131,56 @@ class TrainingManager:
             "training_config": training_config,
         }
 
-        # Build CLI command
-        cmd = [
-            sys.executable,
-            "-m",
-            "batdetect2",
-            "train",
-            train_dataset,
-            "--num-epochs",
-            str(num_epochs),
-            "--train-workers",
-            str(train_workers),
-            "--val-workers",
-            str(val_workers),
-            "--seed",
-            str(seed),
-        ]
+        # Build CLI command: finetune or train
+        if is_finetune:
+            cmd = [
+                sys.executable,
+                "-m",
+                "batdetect2",
+                "finetune",
+                train_dataset,
+                "--targets",
+                targets_config.strip(),
+                "--model",
+                model_path.strip(),
+                "--trainable",
+                trainable or "heads",
+                "--num-epochs",
+                str(num_epochs),
+                "--train-workers",
+                str(train_workers),
+                "--val-workers",
+                str(val_workers),
+                "--seed",
+                str(seed),
+            ]
+        else:
+            cmd = [
+                sys.executable,
+                "-m",
+                "batdetect2",
+                "train",
+                train_dataset,
+                "--num-epochs",
+                str(num_epochs),
+                "--train-workers",
+                str(train_workers),
+                "--val-workers",
+                str(val_workers),
+                "--seed",
+                str(seed),
+            ]
+            if targets_config:
+                cmd.extend(["--targets", targets_config.strip()])
+            if model_path and model_path.strip():
+                cmd.extend(["--model", model_path.strip()])
 
         if val_dataset:
-            cmd.extend(["--val-dataset", val_dataset])
-        if targets_config:
-            cmd.extend(["--targets", targets_config])
-        if model_path and model_path.strip():
-            cmd.extend(["--model", model_path.strip()])
+            cmd.extend(["--val-dataset", val_dataset.strip()])
         if experiment_name:
-            cmd.extend(["--experiment-name", experiment_name])
+            cmd.extend(["--experiment-name", experiment_name.strip()])
         if run_name:
-            cmd.extend(["--run-name", run_name])
+            cmd.extend(["--run-name", run_name.strip()])
 
         # If audio_config or preprocess_config or training_config is provided, create configs
         config_gen_dir = self.workspace_root / "outputs" / "generated_configs"

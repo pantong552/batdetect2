@@ -18,18 +18,6 @@ classification_targets:
     tags:
       - key: class
         value: Hipposideros armiger
-  - name: myohor
-    tags:
-      - key: class
-        value: Myotis horsfieldii
-  - name: pipten
-    tags:
-      - key: class
-        value: Pipistrellus tenuis
-  - name: tylful
-    tags:
-      - key: class
-        value: Tylonycteris fulvida
 
 roi:
   default:

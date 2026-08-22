@@ -62,7 +62,10 @@ function initNavigation() {
       const targetEl = document.getElementById(target);
       if (targetEl) targetEl.classList.add('active');
 
-      if (target === 'checkpoints-tab') {
+      if (target === 'monitor-tab') {
+        initLiveMetricsChart();
+        refreshLiveMetricsData();
+      } else if (target === 'checkpoints-tab') {
         loadCheckpoints();
       } else if (target === 'experiments-tab') {
         loadExperimentsList();
@@ -121,6 +124,16 @@ function setPreset(inputId, value) {
 function updateRangeDisplay(sliderId, displayId, unit = '') {
   const val = document.getElementById(sliderId).value;
   document.getElementById(displayId).textContent = val + unit;
+}
+
+function updateDurationDisplay() {
+  const val = parseFloat(document.getElementById('infer-duration-slider').value) || 0;
+  const display = document.getElementById('infer-duration-display');
+  if (val <= 0) {
+    display.textContent = 'Full Audio (No Limit)';
+  } else {
+    display.textContent = `${val}s`;
+  }
 }
 
 function applyPresetMode(mode) {
@@ -194,6 +207,7 @@ function handleWsMessage(msg) {
       currentMetricsHistory = data.metrics_history;
       renderChartHistory(data.metrics_history);
     }
+    refreshLiveMetricsData();
   } else if (type === 'log_line') {
     if (data.line) {
       appendTerminalLog(data.line);
@@ -204,15 +218,18 @@ function handleWsMessage(msg) {
     if (data.metrics_updated && data.status && data.status.metrics_history) {
       currentMetricsHistory = data.status.metrics_history;
       renderChartHistory(data.status.metrics_history);
+      refreshLiveMetricsData();
     }
   } else if (type === 'training_started') {
     updateStatusUI(data);
     currentMetricsHistory = [];
     resetChart();
     switchTab('monitor-tab');
+    refreshLiveMetricsData();
   } else if (type === 'training_completed' || type === 'training_failed' || type === 'training_stopped') {
     updateStatusUI(data);
     loadCheckpoints();
+    refreshLiveMetricsData();
   }
 }
 
@@ -426,6 +443,8 @@ async function startTraining() {
   const val_dataset = document.getElementById('val-dataset-input').value.trim();
   const targets_config = document.getElementById('targets-input').value.trim();
   const model_path = document.getElementById('base-model-input').value.trim();
+  const trainableSelect = document.getElementById('finetune-trainable');
+  const trainable = trainableSelect ? trainableSelect.value : 'heads';
   const num_epochs = parseInt(document.getElementById('epochs-slider').value);
   const train_workers = parseInt(document.getElementById('train-workers-input').value) || 0;
   const val_workers = parseInt(document.getElementById('val-workers-input').value) || 0;
@@ -442,6 +461,7 @@ async function startTraining() {
   const lr = parseFloat(document.getElementById('train-lr').value) || 0.001;
   const optimizerName = document.getElementById('train-optimizer').value || 'adam';
   const schedulerName = document.getElementById('train-scheduler').value || 'cosine_annealing';
+  const warmupEpochs = parseInt(document.getElementById('warmup-epochs-input')?.value) || 0;
   const checkValEvery = parseInt(document.getElementById('val-check-interval').value) || 1;
 
   let optimizerConfig;
@@ -466,9 +486,22 @@ async function startTraining() {
   } else {
     optimizerConfig = {
       name: 'adam',
-      learning_rate: lr,
+      lr: lr,
     };
   }
+
+  let schedulerConfig = null;
+  if (schedulerName === 'cosine_annealing') {
+    schedulerConfig = {
+      name: 'cosine_annealing',
+      t_max: num_epochs,
+      warmup_epochs: warmupEpochs,
+    };
+  }
+
+  const detLossWeight = parseFloat(document.getElementById('loss-det-weight')?.value) || 1.0;
+  const clsLossWeight = parseFloat(document.getElementById('loss-cls-weight')?.value) || 2.0;
+  const sizeLossWeight = parseFloat(document.getElementById('loss-size-weight')?.value) || 1.5;
 
   const training_config = {
     trainer: {
@@ -481,13 +514,21 @@ async function startTraining() {
       shuffle: true,
     },
     optimizer: optimizerConfig,
+    loss: {
+      detection: {
+        weight: detLossWeight,
+      },
+      classification: {
+        weight: clsLossWeight,
+      },
+      size: {
+        weight: sizeLossWeight,
+      },
+    },
   };
 
-  if (schedulerName !== 'none') {
-    training_config.scheduler = {
-      name: schedulerName,
-      t_max: num_epochs,
-    };
+  if (schedulerName !== 'none' && schedulerConfig) {
+    training_config.scheduler = schedulerConfig;
   }
 
   const { audio_config, preprocess_config } = getPreprocessingConfigPayload();
@@ -497,6 +538,7 @@ async function startTraining() {
     val_dataset: val_dataset || null,
     targets_config: targets_config || null,
     model_path: model_path || null,
+    trainable: trainable || 'heads',
     num_epochs,
     train_workers,
     val_workers,
@@ -649,8 +691,11 @@ async function loadCheckpoints() {
     const list = await res.json();
     if (!list || list.length === 0) {
       tbody.innerHTML = '<tr><td colspan="6" class="cell-empty">No checkpoints found in outputs/checkpoints/</td></tr>';
+      updateInferenceModelSelect(list || []);
       return;
     }
+
+    updateInferenceModelSelect(list);
 
     tbody.innerHTML = list.map(ckpt => {
       const dateStr = new Date(ckpt.created_time * 1000).toLocaleString('en-US');
@@ -672,6 +717,39 @@ async function loadCheckpoints() {
     }).join('');
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="6" class="cell-empty">Failed to load: ${err.message}</td></tr>`;
+  }
+}
+
+async function refreshInferenceModels() {
+  await loadCheckpoints();
+}
+
+function updateInferenceModelSelect(checkpointsList) {
+  const select = document.getElementById('infer-model-select');
+  if (!select) return;
+  const currentVal = select.value;
+
+  select.innerHTML = `
+    <option value="">Default Pretrained (UK Same / Net2DFast)</option>
+    <option value="src/batdetect2/models/checkpoints/batdetect2_uk_same.ckpt">UK Pretrained (.ckpt)</option>
+  `;
+
+  if (checkpointsList && checkpointsList.length > 0) {
+    const group = document.createElement('optgroup');
+    group.label = 'Trained & Fine-tuned Models (outputs/checkpoints/)';
+    checkpointsList.forEach(ckpt => {
+      const opt = document.createElement('option');
+      opt.value = ckpt.relative_path;
+      const tag = ckpt.is_best ? ' ★ BEST' : '';
+      opt.textContent = `${ckpt.filename} (${ckpt.size_mb} MB)${tag}`;
+      group.appendChild(opt);
+    });
+    select.appendChild(group);
+  }
+
+  // Restore selection if still exists
+  if (currentVal) {
+    select.value = currentVal;
   }
 }
 
@@ -700,6 +778,10 @@ function useCheckpointForFinetune(path) {
 }
 
 function useCheckpointForInference(path) {
+  const select = document.getElementById('infer-model-select');
+  if (select) {
+    select.value = path;
+  }
   switchTab('inference-tab');
 }
 
@@ -755,6 +837,7 @@ async function runInference() {
     return;
   }
 
+  const modelPath = document.getElementById('infer-model-select')?.value || '';
   const threshold = document.getElementById('infer-threshold-slider').value;
   const maxDuration = document.getElementById('infer-duration-slider').value;
 
@@ -767,6 +850,9 @@ async function runInference() {
     formData.append('file', selectedAudioFile);
   } else {
     formData.append('preset_path', exampleVal);
+  }
+  if (modelPath) {
+    formData.append('model_path', modelPath);
   }
   formData.append('detection_threshold', threshold);
   formData.append('max_duration', maxDuration);
@@ -862,6 +948,213 @@ function exportDetectionsJSON() {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+// ----------------------------------------------------
+// LIVE MULTI-METRIC CURVE INSPECTOR (Live Monitor Tab)
+// ----------------------------------------------------
+let liveMetricsInspectorChart = null;
+let liveMetricsData = [];
+let isLiveLogScale = false;
+
+function initLiveMetricsChart() {
+  if (liveMetricsInspectorChart) return;
+  const canvas = document.getElementById('liveMetricsInspectorChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  liveMetricsInspectorChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: []
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 250 },
+      scales: {
+        x: {
+          grid: { color: '#252526' },
+          ticks: { color: '#858585', font: { family: 'Fira Code', size: 9.5 } },
+          title: { display: true, text: 'Epoch', color: '#6e7681', font: { size: 10 } }
+        },
+        y: {
+          type: 'linear',
+          grid: { color: '#252526' },
+          ticks: { color: '#858585', font: { family: 'Fira Code', size: 9.5 } },
+          title: { display: true, text: 'Metric Value', color: '#6e7681', font: { size: 10 } }
+        }
+      },
+      plugins: {
+        legend: {
+          labels: { color: '#cccccc', font: { family: 'Inter', size: 10.5 } }
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          backgroundColor: '#252526',
+          borderColor: '#2d2d2d',
+          borderWidth: 1,
+          titleFont: { family: 'Fira Code', size: 11 },
+          bodyFont: { family: 'Fira Code', size: 10 }
+        }
+      }
+    }
+  });
+}
+
+function toggleLiveLogScale() {
+  initLiveMetricsChart();
+  if (!liveMetricsInspectorChart) return;
+  isLiveLogScale = !isLiveLogScale;
+  liveMetricsInspectorChart.options.scales.y.type = isLiveLogScale ? 'logarithmic' : 'linear';
+  const btn = document.getElementById('btn-live-log');
+  if (btn) btn.classList.toggle('active', isLiveLogScale);
+  liveMetricsInspectorChart.update();
+}
+
+async function refreshLiveMetricsData() {
+  initLiveMetricsChart();
+  try {
+    const res = await fetch('/api/experiments/latest');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && data.metrics) {
+      liveMetricsData = data.metrics;
+      renderLiveSelectedMetric();
+    }
+  } catch (e) {
+    console.warn('Failed to fetch live latest metrics:', e);
+  }
+}
+
+function renderLiveSelectedMetric() {
+  initLiveMetricsChart();
+  if (!liveMetricsInspectorChart || !liveMetricsData.length) return;
+
+  const mode = document.getElementById('live-metric-select').value;
+  const labels = liveMetricsData.map(r => `E${(r.epoch !== null && r.epoch !== undefined ? r.epoch : 0) + 1}`);
+  let datasets = [];
+
+  const colorPalette = ['#4ec9b0', '#569cd6', '#c586c0', '#dcdcaa', '#ce9178', '#9cdcfe', '#4fc1ff', '#b5cea8'];
+
+  if (mode === 'total_loss') {
+    datasets = [
+      {
+        label: 'Total Train Loss',
+        data: liveMetricsData.map(r => r['total_loss/train']),
+        borderColor: '#007acc',
+        backgroundColor: 'rgba(0, 122, 204, 0.1)',
+        borderWidth: 1.8,
+        pointRadius: 2,
+        tension: 0.2,
+      },
+      {
+        label: 'Total Val Loss',
+        data: liveMetricsData.map(r => r['total_loss/val']),
+        borderColor: '#89d185',
+        backgroundColor: 'rgba(137, 209, 133, 0.1)',
+        borderWidth: 1.8,
+        pointRadius: 2.5,
+        tension: 0.2,
+      }
+    ];
+  } else if (mode === 'classification_loss') {
+    datasets = [
+      {
+        label: 'Classification Train Loss',
+        data: liveMetricsData.map(r => r['classification_loss/train']),
+        borderColor: '#9cdcfe',
+        borderWidth: 1.8,
+        pointRadius: 2,
+        tension: 0.2,
+      },
+      {
+        label: 'Classification Val Loss',
+        data: liveMetricsData.map(r => r['classification_loss/val']),
+        borderColor: '#dcdcaa',
+        borderWidth: 1.8,
+        pointRadius: 2,
+        tension: 0.2,
+      }
+    ];
+  } else if (mode === 'detection_loss') {
+    datasets = [
+      {
+        label: 'Detection Train Loss',
+        data: liveMetricsData.map(r => r['detection_loss/train']),
+        borderColor: '#4ec9b0',
+        borderWidth: 1.8,
+        pointRadius: 2,
+        tension: 0.2,
+      },
+      {
+        label: 'Detection Val Loss',
+        data: liveMetricsData.map(r => r['detection_loss/val']),
+        borderColor: '#ce9178',
+        borderWidth: 1.8,
+        pointRadius: 2,
+        tension: 0.2,
+      }
+    ];
+  } else if (mode === 'size_loss') {
+    datasets = [
+      {
+        label: 'BBox Size Train Loss',
+        data: liveMetricsData.map(r => r['size_loss/train']),
+        borderColor: '#c586c0',
+        borderWidth: 1.8,
+        pointRadius: 2,
+        tension: 0.2,
+      },
+      {
+        label: 'BBox Size Val Loss',
+        data: liveMetricsData.map(r => r['size_loss/val']),
+        borderColor: '#d16969',
+        borderWidth: 1.8,
+        pointRadius: 2,
+        tension: 0.2,
+      }
+    ];
+  } else if (mode === 'mAP') {
+    datasets = [
+      {
+        label: 'Mean Average Precision (mAP)',
+        data: liveMetricsData.map(r => r['classification/mean_average_precision']),
+        borderColor: '#e5c07b',
+        backgroundColor: 'rgba(229, 192, 123, 0.1)',
+        borderWidth: 2,
+        pointRadius: 3,
+        tension: 0.2,
+      },
+      {
+        label: 'Detection Average Precision (AP)',
+        data: liveMetricsData.map(r => r['detection/average_precision']),
+        borderColor: '#61afef',
+        borderWidth: 1.8,
+        pointRadius: 2.5,
+        tension: 0.2,
+      }
+    ];
+  } else if (mode === 'species_ap') {
+    const keys = Object.keys(liveMetricsData[0] || {}).filter(k => k.startsWith('classification/average_precision/'));
+    datasets = keys.map((k, idx) => {
+      const spName = k.replace('classification/average_precision/', '');
+      const color = colorPalette[idx % colorPalette.length];
+      return {
+        label: `${spName} AP`,
+        data: liveMetricsData.map(r => r[k]),
+        borderColor: color,
+        borderWidth: 1.8,
+        pointRadius: 2.5,
+        tension: 0.2,
+      };
+    });
+  }
+
+  liveMetricsInspectorChart.data.labels = labels;
+  liveMetricsInspectorChart.data.datasets = datasets;
+  liveMetricsInspectorChart.update();
 }
 
 // ----------------------------------------------------
