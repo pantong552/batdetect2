@@ -45,6 +45,12 @@ document.addEventListener('DOMContentLoaded', () => {
   updateSTFTCalculations();
   updateFreqDisplay();
   updateResizeFactorDisplay();
+  
+  const baseModelInput = document.getElementById('base-model-input');
+  if (baseModelInput) {
+    baseModelInput.addEventListener('input', updateFinetuneTrainableState);
+  }
+  updateFinetuneTrainableState();
 
   setInterval(updateElapsedTimeDisplay, 1000);
 });
@@ -67,6 +73,7 @@ function initNavigation() {
         refreshLiveMetricsData();
       } else if (target === 'checkpoints-tab') {
         loadCheckpoints();
+        loadExportedModels();
       } else if (target === 'experiments-tab') {
         loadExperimentsList();
       }
@@ -116,9 +123,28 @@ async function initPresetsAndExamples() {
   }
 }
 
+function updateFinetuneTrainableState() {
+  const baseModelInput = document.getElementById('base-model-input');
+  const finetuneRow = document.getElementById('finetune-trainable-row');
+  const finetuneSelect = document.getElementById('finetune-trainable');
+  if (!baseModelInput || !finetuneSelect) return;
+
+  const hasModel = baseModelInput.value.trim().length > 0;
+  finetuneSelect.disabled = !hasModel;
+  if (finetuneRow) {
+    finetuneRow.style.opacity = hasModel ? '1' : '0.5';
+    finetuneRow.title = hasModel ? '' : 'Fine-tuning scope is only available when a Base Model / Checkpoint is selected.';
+  }
+}
+
 function setPreset(inputId, value) {
   const el = document.getElementById(inputId);
-  if (el) el.value = value;
+  if (el) {
+    el.value = value;
+    if (inputId === 'base-model-input') {
+      updateFinetuneTrainableState();
+    }
+  }
 }
 
 function updateRangeDisplay(sliderId, displayId, unit = '') {
@@ -210,7 +236,7 @@ function handleWsMessage(msg) {
     refreshLiveMetricsData();
   } else if (type === 'log_line') {
     if (data.line) {
-      appendTerminalLog(data.line);
+      appendTerminalLog(data.line, data.is_progress);
     }
     if (data.status) {
       updateStatusUI(data.status);
@@ -223,9 +249,11 @@ function handleWsMessage(msg) {
   } else if (type === 'training_started') {
     updateStatusUI(data);
     currentMetricsHistory = [];
+    currentElapsedSeconds = 0;
     resetChart();
+    resetLiveInspectorCharts();
+    clearTerminalLogs();
     switchTab('monitor-tab');
-    refreshLiveMetricsData();
   } else if (type === 'training_completed' || type === 'training_failed' || type === 'training_stopped') {
     updateStatusUI(data);
     loadCheckpoints();
@@ -294,12 +322,20 @@ function updateElapsedTimeDisplay() {
 let lastLogIsProgress = false;
 
 function isProgressBarLine(text) {
-  return /Epoch\s+\d+:|\bValidation:\s*\||\|\s*\d+%/i.test(text);
+  return /^(Training|Validation|Sanity Checking|Epoch\s+\d+):\s*(\d+%|\|)/i.test(text.trim()) ||
+         /\|\s*\d+[\/\?]\d*\s*\[/i.test(text) ||
+         /\|\s*\d+%/i.test(text) ||
+         /^\s*Epoch\s+\d+:\s*\d+%/i.test(text);
 }
 
-function appendTerminalLog(line) {
+function appendTerminalLog(line, forceProgress = null) {
+  // 過濾掉 lr_scheduler 相關警告
+  if (line.includes("lr_scheduler.py:224") || line.includes("UserWarning: Detected call of `lr_scheduler.step()`") || line.startsWith("warnings.warn")) {
+    return;
+  }
+
   const terminal = document.getElementById('terminal-logs');
-  const isProgress = isProgressBarLine(line);
+  const isProgress = forceProgress !== null ? forceProgress : isProgressBarLine(line);
   
   if (isProgress && lastLogIsProgress && terminal.lastElementChild) {
     terminal.lastElementChild.innerHTML = ansiToHtml(line) + '\n';
@@ -351,13 +387,13 @@ function updateResizeFactorDisplay() {
 }
 
 function resetPreprocessingDefaults() {
-  document.getElementById('spec-samplerate').value = 256000;
+  document.getElementById('spec-samplerate').value = 384000;
   document.getElementById('spec-resample-method').value = 'poly';
   document.getElementById('spec-win-duration').value = 0.002;
   document.getElementById('spec-win-overlap').value = 0.75;
   document.getElementById('spec-win-fn').value = 'hann';
   document.getElementById('spec-min-freq').value = 10000;
-  document.getElementById('spec-max-freq').value = 120000;
+  document.getElementById('spec-max-freq').value = 128000;
   document.getElementById('spec-pcen-tc').value = 0.4;
   document.getElementById('spec-pcen-gain').value = 0.98;
   document.getElementById('spec-pcen-bias').value = 2.0;
@@ -372,7 +408,7 @@ function resetPreprocessingDefaults() {
 }
 
 function getPreprocessingConfigPayload() {
-  const samplerate = parseInt(document.getElementById('spec-samplerate').value) || 256000;
+  const samplerate = parseInt(document.getElementById('spec-samplerate').value) || 384000;
   const resampleMethod = document.getElementById('spec-resample-method').value || 'poly';
 
   const winDuration = parseFloat(document.getElementById('spec-win-duration').value) || 0.002;
@@ -380,7 +416,7 @@ function getPreprocessingConfigPayload() {
   const winFn = document.getElementById('spec-win-fn').value || 'hann';
 
   const minFreq = parseInt(document.getElementById('spec-min-freq').value) || 10000;
-  const maxFreq = parseInt(document.getElementById('spec-max-freq').value) || 120000;
+  const maxFreq = parseInt(document.getElementById('spec-max-freq').value) || 128000;
 
   const pcenTc = parseFloat(document.getElementById('spec-pcen-tc').value) || 0.4;
   const pcenGain = parseFloat(document.getElementById('spec-pcen-gain').value) || 0.98;
@@ -708,9 +744,12 @@ async function loadCheckpoints() {
           <td style="color: #858585;">${dateStr}</td>
           <td>${badge}</td>
           <td>
-            <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="useCheckpointForInference('${ckpt.relative_path}')">Load Test</button>
-            <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="useCheckpointForFinetune('${ckpt.relative_path}')">Finetune</button>
-            <button class="vsc-btn vsc-btn-danger vsc-btn-xs" onclick="deleteCheckpoint('${ckpt.relative_path}')">Delete</button>
+            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+              <button class="vsc-btn vsc-btn-primary vsc-btn-xs" onclick="exportCheckpointToONNX('${ckpt.relative_path}', this)">ONNX</button>
+              <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="useCheckpointForInference('${ckpt.relative_path}')">Load Test</button>
+              <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="useCheckpointForFinetune('${ckpt.relative_path}')">Finetune</button>
+              <button class="vsc-btn vsc-btn-danger vsc-btn-xs" onclick="deleteCheckpoint('${ckpt.relative_path}')">Delete</button>
+            </div>
           </td>
         </tr>
       `;
@@ -720,8 +759,100 @@ async function loadCheckpoints() {
   }
 }
 
+async function exportCheckpointToONNX(path, btnEl) {
+  const originalText = btnEl ? btnEl.innerHTML : 'ONNX';
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.textContent = 'Exporting...';
+  }
+
+  try {
+    const res = await fetch('/api/checkpoints/export-onnx', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(`🎉 Export Succeeded!\n\nModel exported to:\n📁 ${data.output_dir}\n├── ${data.onnx_path}\n└── ${data.metadata_path}`);
+      loadExportedModels();
+    } else {
+      alert(`Export Failed: ${data.detail || 'Unknown error'}`);
+    }
+  } catch (err) {
+    alert(`Export Error: ${err.message}`);
+  } finally {
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.innerHTML = originalText;
+    }
+  }
+}
+
+async function loadExportedModels() {
+  const tbody = document.getElementById('models-tbody');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch('/api/models');
+    const list = await res.json();
+    if (!list || list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="cell-empty">No exported models found in outputs/models/</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = list.map(m => {
+      const dateStr = new Date(m.created_time * 1000).toLocaleString('en-US');
+      const filesBadge = `
+        <span class="vsc-badge" style="color:${m.has_onnx ? '#89d185' : '#f14c4c'}">${m.has_onnx ? 'batdetect2.onnx' : 'Missing onnx'}</span>
+        <span class="vsc-badge" style="color:${m.has_metadata ? '#4fc1ff' : '#f14c4c'}">${m.has_metadata ? 'metadata.json' : 'Missing json'}</span>
+      `;
+      const classesStr = m.classes && m.classes.length > 0 
+        ? `<span title="${m.classes.join(', ')}">${m.classes.length} classes (${m.classes.slice(0, 3).join(', ')}${m.classes.length > 3 ? '...' : ''})</span>`
+        : '<span style="color:#858585;">--</span>';
+      const srStr = m.sample_rate ? `${(m.sample_rate / 1000).toFixed(0)} kHz` : '--';
+
+      return `
+        <tr>
+          <td style="font-weight: 600; color: #4ec9b0;">📁 ${m.name}</td>
+          <td>${filesBadge}</td>
+          <td>${m.onnx_size_mb} MB</td>
+          <td style="font-family: var(--vsc-font-mono);">${srStr}</td>
+          <td>${classesStr}</td>
+          <td style="color: #858585;">${dateStr}</td>
+          <td>
+            <button class="vsc-btn vsc-btn-danger vsc-btn-xs" onclick="deleteExportedModel('${m.relative_path}')">Delete</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="7" class="cell-empty">Failed to load models: ${err.message}</td></tr>`;
+  }
+}
+
+async function deleteExportedModel(path) {
+  if (!confirm(`Are you sure you want to delete exported model folder:\n${path}?\nThis will remove both batdetect2.onnx and metadata.json.`)) {
+    return;
+  }
+  try {
+    const res = await fetch(`/api/models?path=${encodeURIComponent(path)}`, {
+      method: 'DELETE',
+    });
+    const data = await res.json();
+    if (res.ok) {
+      loadExportedModels();
+    } else {
+      alert(`Delete Failed: ${data.detail || 'Error'}`);
+    }
+  } catch (err) {
+    alert(`Delete Error: ${err.message}`);
+  }
+}
+
 async function refreshInferenceModels() {
   await loadCheckpoints();
+  await loadExportedModels();
 }
 
 function updateInferenceModelSelect(checkpointsList) {
@@ -774,6 +905,7 @@ async function deleteCheckpoint(path) {
 
 function useCheckpointForFinetune(path) {
   document.getElementById('base-model-input').value = path;
+  updateFinetuneTrainableState();
   switchTab('config-tab');
 }
 
@@ -954,18 +1086,19 @@ function exportDetectionsJSON() {
 }
 
 // ----------------------------------------------------
-// LIVE MULTI-METRIC CURVE INSPECTOR (Live Monitor Tab)
+// LIVE MULTI-METRIC CURVE INSPECTORS (Live Monitor Tab)
 // ----------------------------------------------------
-let liveMetricsInspectorChart = null;
+let liveMetricsInspectorChart1 = null;
+let liveMetricsInspectorChart2 = null;
 let liveMetricsData = [];
-let isLiveLogScale = false;
+let isLiveLogScale1 = false;
+let isLiveLogScale2 = false;
 
-function initLiveMetricsChart() {
-  if (liveMetricsInspectorChart) return;
-  const canvas = document.getElementById('liveMetricsInspectorChart');
-  if (!canvas) return;
+function createInspectorChart(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return null;
   const ctx = canvas.getContext('2d');
-  liveMetricsInspectorChart = new Chart(ctx, {
+  return new Chart(ctx, {
     type: 'line',
     data: {
       labels: [],
@@ -1006,14 +1139,32 @@ function initLiveMetricsChart() {
   });
 }
 
-function toggleLiveLogScale() {
+function initLiveMetricsChart() {
+  if (!liveMetricsInspectorChart1) {
+    liveMetricsInspectorChart1 = createInspectorChart('liveMetricsInspectorChart1');
+  }
+  if (!liveMetricsInspectorChart2) {
+    liveMetricsInspectorChart2 = createInspectorChart('liveMetricsInspectorChart2');
+  }
+}
+
+function toggleLiveLogScale(inspectorNum = 1) {
   initLiveMetricsChart();
-  if (!liveMetricsInspectorChart) return;
-  isLiveLogScale = !isLiveLogScale;
-  liveMetricsInspectorChart.options.scales.y.type = isLiveLogScale ? 'logarithmic' : 'linear';
-  const btn = document.getElementById('btn-live-log');
-  if (btn) btn.classList.toggle('active', isLiveLogScale);
-  liveMetricsInspectorChart.update();
+  const chart = inspectorNum === 1 ? liveMetricsInspectorChart1 : liveMetricsInspectorChart2;
+  if (!chart) return;
+  
+  if (inspectorNum === 1) {
+    isLiveLogScale1 = !isLiveLogScale1;
+    chart.options.scales.y.type = isLiveLogScale1 ? 'logarithmic' : 'linear';
+    const btn = document.getElementById('btn-live-log-1');
+    if (btn) btn.classList.toggle('active', isLiveLogScale1);
+  } else {
+    isLiveLogScale2 = !isLiveLogScale2;
+    chart.options.scales.y.type = isLiveLogScale2 ? 'logarithmic' : 'linear';
+    const btn = document.getElementById('btn-live-log-2');
+    if (btn) btn.classList.toggle('active', isLiveLogScale2);
+  }
+  chart.update();
 }
 
 async function refreshLiveMetricsData() {
@@ -1024,28 +1175,22 @@ async function refreshLiveMetricsData() {
     const data = await res.json();
     if (data && data.metrics) {
       liveMetricsData = data.metrics;
-      renderLiveSelectedMetric();
+      renderLiveSelectedMetric(1);
+      renderLiveSelectedMetric(2);
     }
   } catch (e) {
     console.warn('Failed to fetch live latest metrics:', e);
   }
 }
 
-function renderLiveSelectedMetric() {
-  initLiveMetricsChart();
-  if (!liveMetricsInspectorChart || !liveMetricsData.length) return;
-
-  const mode = document.getElementById('live-metric-select').value;
-  const labels = liveMetricsData.map(r => `E${(r.epoch !== null && r.epoch !== undefined ? r.epoch : 0) + 1}`);
-  let datasets = [];
-
+function getDatasetsForMetric(mode, data) {
   const colorPalette = ['#4ec9b0', '#569cd6', '#c586c0', '#dcdcaa', '#ce9178', '#9cdcfe', '#4fc1ff', '#b5cea8'];
 
   if (mode === 'total_loss') {
-    datasets = [
+    return [
       {
         label: 'Total Train Loss',
-        data: liveMetricsData.map(r => r['total_loss/train']),
+        data: data.map(r => r['total_loss/train']),
         borderColor: '#007acc',
         backgroundColor: 'rgba(0, 122, 204, 0.1)',
         borderWidth: 1.8,
@@ -1054,7 +1199,7 @@ function renderLiveSelectedMetric() {
       },
       {
         label: 'Total Val Loss',
-        data: liveMetricsData.map(r => r['total_loss/val']),
+        data: data.map(r => r['total_loss/val']),
         borderColor: '#89d185',
         backgroundColor: 'rgba(137, 209, 133, 0.1)',
         borderWidth: 1.8,
@@ -1063,10 +1208,10 @@ function renderLiveSelectedMetric() {
       }
     ];
   } else if (mode === 'classification_loss') {
-    datasets = [
+    return [
       {
         label: 'Classification Train Loss',
-        data: liveMetricsData.map(r => r['classification_loss/train']),
+        data: data.map(r => r['classification_loss/train']),
         borderColor: '#9cdcfe',
         borderWidth: 1.8,
         pointRadius: 2,
@@ -1074,7 +1219,7 @@ function renderLiveSelectedMetric() {
       },
       {
         label: 'Classification Val Loss',
-        data: liveMetricsData.map(r => r['classification_loss/val']),
+        data: data.map(r => r['classification_loss/val']),
         borderColor: '#dcdcaa',
         borderWidth: 1.8,
         pointRadius: 2,
@@ -1082,10 +1227,10 @@ function renderLiveSelectedMetric() {
       }
     ];
   } else if (mode === 'detection_loss') {
-    datasets = [
+    return [
       {
         label: 'Detection Train Loss',
-        data: liveMetricsData.map(r => r['detection_loss/train']),
+        data: data.map(r => r['detection_loss/train']),
         borderColor: '#4ec9b0',
         borderWidth: 1.8,
         pointRadius: 2,
@@ -1093,7 +1238,7 @@ function renderLiveSelectedMetric() {
       },
       {
         label: 'Detection Val Loss',
-        data: liveMetricsData.map(r => r['detection_loss/val']),
+        data: data.map(r => r['detection_loss/val']),
         borderColor: '#ce9178',
         borderWidth: 1.8,
         pointRadius: 2,
@@ -1101,10 +1246,10 @@ function renderLiveSelectedMetric() {
       }
     ];
   } else if (mode === 'size_loss') {
-    datasets = [
+    return [
       {
         label: 'BBox Size Train Loss',
-        data: liveMetricsData.map(r => r['size_loss/train']),
+        data: data.map(r => r['size_loss/train']),
         borderColor: '#c586c0',
         borderWidth: 1.8,
         pointRadius: 2,
@@ -1112,7 +1257,7 @@ function renderLiveSelectedMetric() {
       },
       {
         label: 'BBox Size Val Loss',
-        data: liveMetricsData.map(r => r['size_loss/val']),
+        data: data.map(r => r['size_loss/val']),
         borderColor: '#d16969',
         borderWidth: 1.8,
         pointRadius: 2,
@@ -1120,10 +1265,10 @@ function renderLiveSelectedMetric() {
       }
     ];
   } else if (mode === 'mAP') {
-    datasets = [
+    return [
       {
         label: 'Mean Average Precision (mAP)',
-        data: liveMetricsData.map(r => r['classification/mean_average_precision']),
+        data: data.map(r => r['classification/mean_average_precision']),
         borderColor: '#e5c07b',
         backgroundColor: 'rgba(229, 192, 123, 0.1)',
         borderWidth: 2,
@@ -1132,7 +1277,7 @@ function renderLiveSelectedMetric() {
       },
       {
         label: 'Detection Average Precision (AP)',
-        data: liveMetricsData.map(r => r['detection/average_precision']),
+        data: data.map(r => r['detection/average_precision']),
         borderColor: '#61afef',
         borderWidth: 1.8,
         pointRadius: 2.5,
@@ -1140,13 +1285,13 @@ function renderLiveSelectedMetric() {
       }
     ];
   } else if (mode === 'species_ap') {
-    const keys = Object.keys(liveMetricsData[0] || {}).filter(k => k.startsWith('classification/average_precision/'));
-    datasets = keys.map((k, idx) => {
+    const keys = Object.keys(data[0] || {}).filter(k => k.startsWith('classification/average_precision/'));
+    return keys.map((k, idx) => {
       const spName = k.replace('classification/average_precision/', '');
       const color = colorPalette[idx % colorPalette.length];
       return {
         label: `${spName} AP`,
-        data: liveMetricsData.map(r => r[k]),
+        data: data.map(r => r[k]),
         borderColor: color,
         borderWidth: 1.8,
         pointRadius: 2.5,
@@ -1154,10 +1299,60 @@ function renderLiveSelectedMetric() {
       };
     });
   }
+  return [];
+}
 
-  liveMetricsInspectorChart.data.labels = labels;
-  liveMetricsInspectorChart.data.datasets = datasets;
-  liveMetricsInspectorChart.update();
+function resetLiveInspectorCharts() {
+  liveMetricsData = [];
+  if (liveMetricsInspectorChart1) {
+    liveMetricsInspectorChart1.data.labels = [];
+    liveMetricsInspectorChart1.data.datasets = [];
+    liveMetricsInspectorChart1.update();
+  }
+  if (liveMetricsInspectorChart2) {
+    liveMetricsInspectorChart2.data.labels = [];
+    liveMetricsInspectorChart2.data.datasets = [];
+    liveMetricsInspectorChart2.update();
+  }
+}
+
+function renderLiveSelectedMetric(inspectorNum = null) {
+  initLiveMetricsChart();
+  if (!liveMetricsData.length) {
+    if (liveMetricsInspectorChart1 && (inspectorNum === 1 || inspectorNum === null)) {
+      liveMetricsInspectorChart1.data.labels = [];
+      liveMetricsInspectorChart1.data.datasets = [];
+      liveMetricsInspectorChart1.update();
+    }
+    if (liveMetricsInspectorChart2 && (inspectorNum === 2 || inspectorNum === null)) {
+      liveMetricsInspectorChart2.data.labels = [];
+      liveMetricsInspectorChart2.data.datasets = [];
+      liveMetricsInspectorChart2.update();
+    }
+    return;
+  }
+
+  const labels = liveMetricsData.map(r => `E${(r.epoch !== null && r.epoch !== undefined ? r.epoch : 0) + 1}`);
+
+  if (inspectorNum === 1 || inspectorNum === null) {
+    if (liveMetricsInspectorChart1) {
+      const select1 = document.getElementById('live-metric-select-1');
+      const mode1 = select1 ? select1.value : 'species_ap';
+      liveMetricsInspectorChart1.data.labels = labels;
+      liveMetricsInspectorChart1.data.datasets = getDatasetsForMetric(mode1, liveMetricsData);
+      liveMetricsInspectorChart1.update();
+    }
+  }
+
+  if (inspectorNum === 2 || inspectorNum === null) {
+    if (liveMetricsInspectorChart2) {
+      const select2 = document.getElementById('live-metric-select-2');
+      const mode2 = select2 ? select2.value : 'size_loss';
+      liveMetricsInspectorChart2.data.labels = labels;
+      liveMetricsInspectorChart2.data.datasets = getDatasetsForMetric(mode2, liveMetricsData);
+      liveMetricsInspectorChart2.update();
+    }
+  }
 }
 
 // ----------------------------------------------------

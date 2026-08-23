@@ -344,6 +344,12 @@ body.vscode-theme {
   gap: 10px;
 }
 
+.form-cols-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+
 .form-row label {
   display: flex;
   justify-content: space-between;
@@ -374,6 +380,14 @@ body.vscode-theme {
 
 .vsc-input:focus, .vsc-select:focus {
   border-color: var(--vsc-border-focus);
+}
+
+.vsc-input:disabled, .vsc-select:disabled {
+  background: #1e1e1e;
+  color: var(--vsc-text-dim);
+  border-color: #333333;
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .input-group {

@@ -1,8 +1,26 @@
-name: example dataset
-description: Only for demonstration purposes
+name: test dataset
+description: Test dataset categorized into species subfolders
 sources:
   - format: batdetect2
-    name: Example Data
-    description: Test data with HM LP HLB LBB
-    annotations_dir: Test_data/anns
-    audio_dir: Test_data/audio
+    name: HLB Species Data
+    description: HLB recordings and annotations
+    annotations_dir: Test_data/anns/HLB
+    audio_dir: Test_data/audio/HLB
+
+  - format: batdetect2
+    name: HM Species Data
+    description: HM recordings and annotations
+    annotations_dir: Test_data/anns/HM
+    audio_dir: Test_data/audio/HM
+
+  - format: batdetect2
+    name: LBB Species Data
+    description: LBB recordings and annotations
+    annotations_dir: Test_data/anns/LBB
+    audio_dir: Test_data/audio/LBB
+
+  - format: batdetect2
+    name: LP Species Data
+    description: LP recordings and annotations
+    annotations_dir: Test_data/anns/LP
+    audio_dir: Test_data/audio/LP

@@ -173,9 +173,9 @@
               <div class="form-row">
                 <label for="epochs-slider">
                   <span>Max Epochs</span>
-                  <span class="vsc-badge" id="epochs-display">20</span>
+                  <span class="vsc-badge" id="epochs-display">100</span>
                 </label>
-                <input type="range" id="epochs-slider" class="vsc-slider" min="1" max="500" value="20" oninput="updateRangeDisplay('epochs-slider', 'epochs-display')">
+                <input type="range" id="epochs-slider" class="vsc-slider" min="1" max="500" value="100" oninput="updateRangeDisplay('epochs-slider', 'epochs-display')">
               </div>
 
               <div class="form-row">
@@ -252,7 +252,7 @@
               </div>
             </div>
 
-            <div class="form-cols-3">
+            <div class="form-cols-2">
               <div class="form-row">
                 <label for="seed-input">
                   <span>Random Seed</span>
@@ -261,24 +261,20 @@
               </div>
 
               <div class="form-row">
-                <label for="train-workers-input">
-                  <span>Train Workers</span>
+                <label>
+                  <span>Data Workers (Train / Val)</span>
                 </label>
-                <input type="number" id="train-workers-input" class="vsc-input" value="0" min="0" max="16">
-              </div>
-
-              <div class="form-row">
-                <label for="val-workers-input">
-                  <span>Val Workers</span>
-                </label>
-                <input type="number" id="val-workers-input" class="vsc-input" value="0" min="0" max="16">
+                <div class="input-group">
+                  <input type="number" id="train-workers-input" class="vsc-input" value="0" min="0" max="16" placeholder="Train: 0" title="Train Workers">
+                  <input type="number" id="val-workers-input" class="vsc-input" value="0" min="0" max="16" placeholder="Val: 0" title="Val Workers">
+                </div>
               </div>
             </div>
 
             <!-- Multi-task Loss Weights Configuration -->
             <div class="form-row-group" style="margin-top: 10px; padding: 10px; background: rgba(255, 255, 255, 0.02); border: 1px solid #2d2d2d; border-radius: 4px;">
               <div style="font-size: 11px; font-weight: 600; color: #4ec9b0; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
-                <span>🎯 Multi-task Loss Weights (損失函數權重)</span>
+                <span>Multi-task Loss Weights</span>
                 <span style="font-size: 10px; color: #858585; font-weight: normal;">Tune size loss to fix tiny bounding boxes</span>
               </div>
               <div class="form-cols-3">
@@ -302,17 +298,6 @@
                   </label>
                   <input type="number" id="loss-size-weight" class="vsc-input" value="1.5" step="0.1" min="0.0" title="提高此權重可促使模型學習完整邊界框 (預設 0.1, 推薦 1.0~2.0)">
                 </div>
-              </div>
-            </div>
-
-            <!-- Quick Presets -->
-            <div class="preset-strip">
-              <span class="preset-label">Presets:</span>
-              <div class="btn-cluster">
-                <button class="vsc-btn vsc-btn-primary vsc-btn-sm" onclick="applyPresetMode('test_data_4gb')">🦇 Test_data (4GB GPU, 20 Ep)</button>
-                <button class="vsc-btn vsc-btn-outline vsc-btn-sm" onclick="applyPresetMode('quick')">Quick Test (5 Ep)</button>
-                <button class="vsc-btn vsc-btn-outline vsc-btn-sm" onclick="applyPresetMode('standard')">Standard (100 Ep)</button>
-                <button class="vsc-btn vsc-btn-outline vsc-btn-sm" onclick="applyPresetMode('deep')">Deep Train (200 Ep)</button>
               </div>
             </div>
 
@@ -352,7 +337,7 @@
                 <label for="spec-samplerate">
                   <span>Target Sample Rate (Hz)</span>
                 </label>
-                <input type="number" id="spec-samplerate" class="vsc-input" value="256000" step="1000">
+                <input type="number" id="spec-samplerate" class="vsc-input" value="384000" step="1000" oninput="updateSTFTCalculations()">
               </div>
               <div class="form-row">
                 <label for="spec-resample-method">
@@ -374,14 +359,14 @@
               <div class="form-row">
                 <label for="spec-win-duration">
                   <span>Window Duration (s)</span>
-                  <span class="vsc-badge" id="spec-win-dur-display">0.002s (n_fft=512)</span>
+                  <span class="vsc-badge" id="spec-win-dur-display">0.002s (n_fft=768)</span>
                 </label>
                 <input type="number" id="spec-win-duration" class="vsc-input" value="0.002" step="0.0005" min="0.0005" oninput="updateSTFTCalculations()">
               </div>
               <div class="form-row">
                 <label for="spec-win-overlap">
                   <span>Window Overlap</span>
-                  <span class="vsc-badge" id="spec-win-overlap-display">75% (hop=128)</span>
+                  <span class="vsc-badge" id="spec-win-overlap-display">75% (hop=192)</span>
                 </label>
                 <input type="number" id="spec-win-overlap" class="vsc-input" value="0.75" step="0.05" min="0" max="0.95" oninput="updateSTFTCalculations()">
               </div>
@@ -415,9 +400,9 @@
               <div class="form-row">
                 <label for="spec-max-freq">
                   <span>Max Frequency (Hz)</span>
-                  <span class="vsc-badge" id="spec-max-freq-display">120 kHz</span>
+                  <span class="vsc-badge" id="spec-max-freq-display">128 kHz</span>
                 </label>
-                <input type="number" id="spec-max-freq" class="vsc-input" value="120000" step="1000" min="1000" oninput="updateFreqDisplay()">
+                <input type="number" id="spec-max-freq" class="vsc-input" value="128000" step="1000" min="1000" oninput="updateFreqDisplay()">
               </div>
             </div>
 
@@ -567,33 +552,64 @@
         </div>
       </div>
 
-      <!-- Live Dynamic Multi-Metric Curve Inspector (metrics.csv) -->
-      <div class="panel-section" style="margin-top: 14px;">
-        <div class="section-header flex-between">
-          <div class="section-title">
-            <span>Live Multi-Metric Curve Inspector (outputs/logs/ metrics.csv)</span>
+      <!-- Live Dynamic Multi-Metric Curve Inspectors (metrics.csv) -->
+      <div class="panel-grid-2" style="margin-top: 14px;">
+        <!-- Left Inspector: Default Species AP Breakdown -->
+        <div class="panel-section">
+          <div class="section-header flex-between">
+            <div class="section-title">
+              <span>Metric Inspector A</span>
+            </div>
+            <div class="section-controls">
+              <select id="live-metric-select-1" class="vsc-select vsc-btn-xs" style="width: 170px;" onchange="renderLiveSelectedMetric(1)">
+                <option value="species_ap" selected>Species AP Breakdown</option>
+                <option value="size_loss">Bounding Box Size Loss</option>
+                <option value="total_loss">Total Loss (Train vs Val)</option>
+                <option value="classification_loss">Classification Loss</option>
+                <option value="detection_loss">Detection Loss</option>
+                <option value="mAP">Mean Average Precision (mAP)</option>
+              </select>
+              <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="toggleLiveLogScale(1)" id="btn-live-log-1">Log</button>
+              <button class="vsc-btn vsc-btn-secondary vsc-btn-xs" onclick="refreshLiveMetricsData()">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 4v6h-6"></path>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+              </button>
+            </div>
           </div>
-          <div class="section-controls">
-            <select id="live-metric-select" class="vsc-select vsc-btn-xs" style="width: 220px;" onchange="renderLiveSelectedMetric()">
-              <option value="total_loss">Total Loss (Train vs Val)</option>
-              <option value="classification_loss">Classification Loss (Train vs Val)</option>
-              <option value="detection_loss">Detection Loss (Train vs Val)</option>
-              <option value="size_loss">Bounding Box Size Loss (Train vs Val)</option>
-              <option value="mAP">Mean Average Precision (mAP)</option>
-              <option value="species_ap">Species AP Breakdown (All Classes)</option>
-            </select>
-            <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="toggleLiveLogScale()" id="btn-live-log">Log Scale</button>
-            <button class="vsc-btn vsc-btn-secondary vsc-btn-xs" onclick="refreshLiveMetricsData()">
-              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M23 4v6h-6"></path>
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-              </svg>
-              <span>Refresh Metrics</span>
-            </button>
+          <div class="section-body chart-wrapper" style="height: 380px;">
+            <canvas id="liveMetricsInspectorChart1"></canvas>
           </div>
         </div>
-        <div class="section-body chart-wrapper" style="height: 420px;">
-          <canvas id="liveMetricsInspectorChart"></canvas>
+
+        <!-- Right Inspector: Default Bounding Box Size Loss -->
+        <div class="panel-section">
+          <div class="section-header flex-between">
+            <div class="section-title">
+              <span>Metric Inspector B</span>
+            </div>
+            <div class="section-controls">
+              <select id="live-metric-select-2" class="vsc-select vsc-btn-xs" style="width: 170px;" onchange="renderLiveSelectedMetric(2)">
+                <option value="size_loss" selected>Bounding Box Size Loss</option>
+                <option value="species_ap">Species AP Breakdown</option>
+                <option value="total_loss">Total Loss (Train vs Val)</option>
+                <option value="classification_loss">Classification Loss</option>
+                <option value="detection_loss">Detection Loss</option>
+                <option value="mAP">Mean Average Precision (mAP)</option>
+              </select>
+              <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="toggleLiveLogScale(2)" id="btn-live-log-2">Log</button>
+              <button class="vsc-btn vsc-btn-secondary vsc-btn-xs" onclick="refreshLiveMetricsData()">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 4v6h-6"></path>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="section-body chart-wrapper" style="height: 380px;">
+            <canvas id="liveMetricsInspectorChart2"></canvas>
+          </div>
         </div>
       </div>
     </section>
@@ -623,11 +639,47 @@
                   <th>Size</th>
                   <th>Created Time</th>
                   <th>Tag</th>
-                  <th style="width: 220px;">Actions</th>
+                  <th style="width: 270px;">Actions</th>
                 </tr>
               </thead>
               <tbody id="checkpoints-tbody">
                 <tr><td colspan="6" class="cell-empty">Loading checkpoints...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Exported ONNX Models List -->
+      <div class="panel-section" style="margin-top: 14px;">
+        <div class="section-header flex-between">
+          <div class="section-title">
+            <span>Exported Web / ONNX Models (outputs/models/)</span>
+          </div>
+          <button class="vsc-btn vsc-btn-secondary vsc-btn-sm" onclick="loadExportedModels()">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 4v6h-6"></path>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+            <span>Refresh Models</span>
+          </button>
+        </div>
+        <div class="section-body">
+          <div class="table-scroll">
+            <table class="vsc-table" id="models-table">
+              <thead>
+                <tr>
+                  <th>Model Subfolder</th>
+                  <th>Files</th>
+                  <th>ONNX Size</th>
+                  <th>Sample Rate</th>
+                  <th>Trained Classes</th>
+                  <th>Created Time</th>
+                  <th style="width: 140px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="models-tbody">
+                <tr><td colspan="7" class="cell-empty">Loading exported models...</td></tr>
               </tbody>
             </table>
           </div>

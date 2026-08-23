@@ -226,6 +226,7 @@ class TrainingManager:
         env["PYTHONUNBUFFERED"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
         env["PYTHONUTF8"] = "1"
+        env["PYTHONWARNINGS"] = "ignore::UserWarning:torch.optim.lr_scheduler"
 
         self._append_log(f"[Studio] Start training task: {' '.join(cmd)}")
         await self.broadcast({
@@ -379,6 +380,12 @@ class TrainingManager:
                         "timestamp": round(time.time() - (self.start_time or time.time()), 2),
                     })
 
+            # 過濾 lr_scheduler.step() before optimizer.step() 誤報警告行
+            if "lr_scheduler" in clean_line and ("step()" in clean_line or "UserWarning" in clean_line or "warnings.warn" in clean_line):
+                continue
+            if clean_line.startswith("warnings.warn(") or "opt.html#how-to-adjust-learning-rate" in clean_line:
+                continue
+
             # 過濾純 Validation / Sanity Checking 暫態中間步雜訊
             if re.search(r"^(Validation|Sanity Checking)(?:\s+DataLoader\s+\d+)?:", clean_line, re.IGNORECASE):
                 if metrics_updated:
@@ -394,6 +401,8 @@ class TrainingManager:
 
             # 格式化 Epoch 輸出行，清楚呈現 Epoch 序號與 Loss，並防止重複行
             display_line = line
+            is_progress = bool(re.search(r"(?:Epoch\s+\d+|Training|Validation):\s*(?:\d+%|\|)", clean_line) or re.search(r"\|\s*\d+[\/\?]\d*\s*\[", clean_line))
+
             if parsed_epoch is not None and (parsed_train_loss is not None or parsed_val_loss is not None):
                 # 只有在 val_loss 有數值，或是最後一步時輸出，避免同一個 epoch 輸出兩次
                 if parsed_val_loss is not None or parsed_epoch != last_printed_epoch:
@@ -401,16 +410,22 @@ class TrainingManager:
                     v_loss_str = f"{parsed_val_loss:.4f}" if parsed_val_loss is not None else "--"
                     display_line = f">> [Epoch {parsed_epoch + 1:03d}/{self.total_epochs:03d}] Train Loss: {t_loss_str} | Val Loss: {v_loss_str}"
                     last_printed_epoch = parsed_epoch
+                    is_progress = False
                 else:
                     continue
 
-            self._append_log(display_line)
+            # 如果前一條與當前都是進度條，更新最後一條記錄而不是一直追加
+            if is_progress and self.logs_buffer and re.search(r"(?:Epoch\s+\d+|Training|Validation):\s*(?:\d+%|\|)", self.logs_buffer[-1]):
+                self.logs_buffer[-1] = display_line
+            else:
+                self._append_log(display_line)
 
             await self.broadcast({
                 "type": "log_line",
                 "data": {
                     "line": display_line,
-                    "clean_line": ANSI_ESCAPE.sub("", display_line),
+                    "clean_line": clean_line,
+                    "is_progress": is_progress,
                     "metrics_updated": metrics_updated,
                     "status": self.get_status_payload(),
                 },

@@ -1,8 +1,10 @@
+import asyncio
 import base64
 import glob
 import io
 import json
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -27,9 +29,11 @@ WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 UPLOADS_DIR = WORKSPACE_ROOT / "outputs" / "ui_uploads"
 CHECKPOINTS_DIR = WORKSPACE_ROOT / "outputs" / "checkpoints"
+MODELS_DIR = WORKSPACE_ROOT / "outputs" / "models"
 
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 CHECKPOINTS_DIR.mkdir(parents=True, exist_ok=True)
+MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
     title="BatDetect2 Training Studio",
@@ -183,6 +187,104 @@ async def list_checkpoints():
     # 排序：最新產生的排前面
     checkpoints.sort(key=lambda x: x["created_time"], reverse=True)
     return checkpoints
+
+
+@app.post("/api/checkpoints/export-onnx")
+async def export_checkpoint_onnx(payload: Dict[str, Any]):
+    """將指定的 Checkpoint 轉換為 ONNX 格式模型與 metadata.json，儲存於 outputs/models/{model_name}/"""
+    ckpt_rel_path = payload.get("path", "").strip()
+    if not ckpt_rel_path:
+        raise HTTPException(status_code=400, detail="請提供 Checkpoint 路徑！")
+
+    ckpt_path = (WORKSPACE_ROOT / ckpt_rel_path).resolve()
+    if not ckpt_path.exists():
+        raise HTTPException(status_code=404, detail="找不到該 Checkpoint 檔案！")
+
+    # 決定子目錄名稱：例如 outputs/checkpoints/batdetect2_studio_run/last-v8.ckpt -> batdetect2_studio_run_last-v8 或取其父資料夾與檔名
+    parent_name = ckpt_path.parent.name if ckpt_path.parent.name != "checkpoints" else "default"
+    stem_name = ckpt_path.stem
+    model_subfolder_name = f"{parent_name}_{stem_name}" if parent_name != stem_name else stem_name
+    
+    # 也可以允許前端自訂 subfolder，若無則使用自動命名的 subfolder
+    custom_subfolder = payload.get("subfolder", "").strip()
+    if custom_subfolder:
+        model_subfolder_name = re.sub(r"[^\w\-\.]", "_", custom_subfolder)
+
+    output_models_dir = (MODELS_DIR / model_subfolder_name).resolve()
+    output_models_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # 在背景線程非同步調用 export_checkpoint
+        from scripts.export_onnx import export_checkpoint
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, export_checkpoint, str(ckpt_path), str(output_models_dir))
+
+        rel_out_dir = str(output_models_dir.relative_to(WORKSPACE_ROOT)).replace("\\", "/")
+        return {
+            "success": True,
+            "message": f"ONNX 導出成功！",
+            "output_dir": rel_out_dir,
+            "onnx_path": f"{rel_out_dir}/batdetect2.onnx",
+            "metadata_path": f"{rel_out_dir}/metadata.json",
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"導出 ONNX 失敗: {str(e)}")
+
+
+@app.get("/api/models")
+async def list_exported_models():
+    """取得 outputs/models/ 下的所有導出模型子資料夾與其資訊。"""
+    models = []
+    if MODELS_DIR.exists():
+        for item in MODELS_DIR.iterdir():
+            if item.is_dir():
+                onnx_file = item / "batdetect2.onnx"
+                meta_file = item / "metadata.json"
+                stat = item.stat()
+                onnx_size_mb = round(onnx_file.stat().st_size / (1024 * 1024), 2) if onnx_file.exists() else 0
+
+                meta_data = {}
+                if meta_file.exists():
+                    try:
+                        with open(meta_file, "r", encoding="utf-8") as f:
+                            meta_data = json.load(f)
+                    except Exception:
+                        pass
+
+                models.append({
+                    "name": item.name,
+                    "relative_path": str(item.relative_to(WORKSPACE_ROOT)).replace("\\", "/"),
+                    "has_onnx": onnx_file.exists(),
+                    "has_metadata": meta_file.exists(),
+                    "onnx_size_mb": onnx_size_mb,
+                    "created_time": stat.st_ctime,
+                    "classes": meta_data.get("classes", []),
+                    "sample_rate": meta_data.get("sample_rate", None),
+                })
+
+    models.sort(key=lambda x: x["created_time"], reverse=True)
+    return models
+
+
+@app.delete("/api/models")
+async def delete_exported_model(path: str):
+    """刪除 outputs/models/ 下的指定模型資料夾。"""
+    target_path = (WORKSPACE_ROOT / path).resolve()
+    if not str(target_path).startswith(str(MODELS_DIR.resolve())):
+        raise HTTPException(status_code=403, detail="禁止刪除 models 目錄外的資料夾！")
+    if not target_path.exists():
+        raise HTTPException(status_code=404, detail="該模型資料夾不存在！")
+
+    try:
+        if target_path.is_dir():
+            shutil.rmtree(target_path)
+        else:
+            os.remove(target_path)
+        return {"success": True, "message": "模型已成功刪除"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"刪除失敗: {str(e)}")
 
 
 @app.delete("/api/checkpoints")

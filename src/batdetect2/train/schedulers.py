@@ -73,6 +73,7 @@ def build_cosine_scheduler(
     once per epoch when ``interval="epoch"`` is used.
     """
     if config.warmup_epochs > 0:
+        import warnings
         from torch.optim.lr_scheduler import LinearLR, SequentialLR
 
         warmup_sched = LinearLR(
@@ -87,11 +88,17 @@ def build_cosine_scheduler(
             T_max=cosine_t_max,
             eta_min=config.eta_min,
         )
-        return SequentialLR(
-            optimizer,
-            schedulers=[warmup_sched, cosine_sched],
-            milestones=[config.warmup_epochs],
-        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                category=UserWarning,
+                module=r"torch\.optim\.lr_scheduler",
+            )
+            return SequentialLR(
+                optimizer,
+                schedulers=[warmup_sched, cosine_sched],
+                milestones=[config.warmup_epochs],
+            )
 
     return CosineAnnealingLR(
         optimizer,
