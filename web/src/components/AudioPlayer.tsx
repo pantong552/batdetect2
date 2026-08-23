@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, RotateCcw, Volume2, FastForward, Gauge } from 'lucide-react';
+import { Play, Pause, RotateCcw, Volume2, Gauge } from 'lucide-react';
 
 interface AudioPlayerProps {
   audioBuffer: ArrayBuffer | null;
@@ -155,12 +155,12 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   };
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl">
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl bg-[#18181b] border border-[#27272a] shadow-2xl">
       {/* Play / Pause / Reset */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2.5">
         <button
           onClick={handlePlayPause}
-          className="flex items-center justify-center w-11 h-11 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold shadow-lg shadow-emerald-500/20 transition-all hover:scale-105 active:scale-95"
+          className="flex items-center justify-center w-11 h-11 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold shadow-lg shadow-emerald-500/20 transition-all hover:scale-105 active:scale-95 cursor-pointer"
           title={isPlaying ? '暫停' : '降速播放'}
         >
           {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
@@ -171,7 +171,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
             stopPlayback();
             onTimeUpdate(0);
           }}
-          className="flex items-center justify-center w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+          className="flex items-center justify-center w-9 h-9 rounded-xl bg-[#27272a] hover:bg-[#3f3f46] text-zinc-400 hover:text-zinc-200 border border-[#3f3f46] transition-colors cursor-pointer"
           title="重設播放位置"
         >
           <RotateCcw className="w-4 h-4" />
@@ -180,7 +180,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
       {/* Progress Bar */}
       <div className="flex-1 w-full flex items-center gap-3">
-        <span className="text-xs font-mono text-slate-400 w-14 text-right">
+        <span className="text-xs font-mono text-zinc-400 w-16 text-right font-medium">
           {(currentTime * 1000).toFixed(0)} ms
         </span>
         <input
@@ -190,26 +190,26 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           step="0.001"
           value={currentTime}
           onChange={handleSeek}
-          className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+          className="flex-1 h-1.5 bg-[#121214] rounded-lg appearance-none cursor-pointer accent-emerald-400 border border-[#27272a]"
         />
-        <span className="text-xs font-mono text-slate-400 w-14">
+        <span className="text-xs font-mono text-zinc-400 w-16 font-medium">
           {(duration * 1000).toFixed(0)} ms
         </span>
       </div>
 
       {/* Ultrasound Time Expansion Speed Control */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 text-xs">
+        <div className="flex items-center gap-1.5 bg-[#27272a] px-2.5 py-1.5 rounded-xl border border-[#3f3f46] text-xs">
           <Gauge className="w-3.5 h-3.5 text-cyan-400" />
-          <span className="text-slate-500 text-[11px] mr-1">降速聆聽:</span>
+          <span className="text-zinc-400 text-[11px] font-medium mr-1">降速聆聽:</span>
           {[0.05, 0.1, 0.2, 0.5, 1.0].map((rate) => (
             <button
               key={rate}
               onClick={() => handleRateChange(rate)}
-              className={`px-1.5 py-0.5 rounded font-mono text-[11px] transition-colors ${
+              className={`px-1.5 py-0.5 rounded-lg font-mono text-[11px] transition-all cursor-pointer ${
                 playbackRate === rate
-                  ? 'bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-[#18181b] text-cyan-400 font-bold border border-cyan-500/40 shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
               {rate === 1.0 ? '1x' : `${rate}x`}
@@ -218,8 +218,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         </div>
 
         {/* Volume */}
-        <div className="hidden md:flex items-center gap-1.5 text-slate-400">
-          <Volume2 className="w-4 h-4 text-slate-400" />
+        <div className="hidden md:flex items-center gap-2 text-zinc-400 bg-[#27272a] px-2.5 py-1.5 rounded-xl border border-[#3f3f46]">
+          <Volume2 className="w-3.5 h-3.5 text-zinc-400" />
           <input
             type="range"
             min="0"
@@ -227,10 +227,12 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
             step="0.05"
             value={volume}
             onChange={(e) => setVolume(parseFloat(e.target.value))}
-            className="w-16 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+            className="w-16 h-1 bg-[#18181b] rounded-lg appearance-none cursor-pointer accent-emerald-400"
           />
         </div>
       </div>
     </div>
   );
+
 };
+

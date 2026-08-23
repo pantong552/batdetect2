@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { AudioAnalysisResult, Detection } from '../lib/types';
-import { ZoomIn, ZoomOut, RotateCcw, Maximize2, SlidersHorizontal } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Maximize2, SlidersHorizontal, Activity } from 'lucide-react';
 
 interface SpectrogramViewerProps {
   result: AudioAnalysisResult;
@@ -40,7 +40,7 @@ export const SpectrogramViewer: React.FC<SpectrogramViewerProps> = ({
   const [mousePos, setMousePos] = useState<{ x: number; y: number; time: number; freq: number } | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [colormap, setColormap] = useState<'magma' | 'viridis' | 'inferno'>('magma');
-  const [viewHeight, setViewHeight] = useState<number>(480); // Default increased to 480px
+  const [viewHeight, setViewHeight] = useState<number>(480);
 
   const { spectrogram, duration, detections } = result;
   const minFreq = spectrogram.minFreq || 10000;
@@ -155,7 +155,7 @@ export const SpectrogramViewer: React.FC<SpectrogramViewerProps> = ({
       const tagW = textMetrics.width + 8;
       const tagH = 16;
 
-      ctx.fillStyle = 'rgba(10, 15, 26, 0.9)';
+      ctx.fillStyle = 'rgba(11, 15, 25, 0.92)';
       ctx.fillRect(x0, Math.max(0, y0 - tagH), tagW, tagH);
 
       ctx.fillStyle = color.text;
@@ -244,24 +244,27 @@ export const SpectrogramViewer: React.FC<SpectrogramViewerProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-2xl bg-slate-900/90 border border-slate-800 p-4 shadow-xl">
+    <div className="flex flex-col gap-2 rounded-2xl bg-[#18181b] border border-[#27272a] p-4 sm:p-5 shadow-2xl">
       {/* Top Controls Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3.5 border-b border-[#27272a]">
         <div className="flex items-center gap-3">
-          <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-            超音波頻譜圖 <span className="text-xs font-mono text-emerald-400">({(minFreq / 1000).toFixed(0)}kHz ~ {(maxFreq / 1000).toFixed(0)}kHz)</span>
-          </h3>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
-            {filteredDetections.length} 次定位叫聲 <span className="text-[10px] text-slate-500">(&ge;{Math.round(threshold * 100)}%)</span>
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-sm font-semibold text-zinc-200">
+              超音波頻譜圖 <span className="text-xs font-mono text-emerald-400 font-medium">({(minFreq / 1000).toFixed(0)}kHz ~ {(maxFreq / 1000).toFixed(0)}kHz)</span>
+            </h3>
+          </div>
+          <span className="text-xs px-2.5 py-0.5 rounded-lg bg-[#27272a] border border-[#3f3f46] text-zinc-300 font-mono">
+            {filteredDetections.length} 次定位叫聲 <span className="text-[10px] text-zinc-400">(&ge;{Math.round(threshold * 100)}%)</span>
           </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {/* Real-time Threshold Slider on Top Toolbar */}
           {onThresholdChange && (
-            <div className="flex items-center gap-2 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
-              <span className="text-slate-500 text-[11px]">門檻:</span>
+            <div className="flex items-center gap-2 bg-[#27272a] px-2.5 py-1 rounded-xl border border-[#3f3f46]">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-400" />
+              <span className="text-zinc-400 text-[11px]">門檻:</span>
               <input
                 type="range"
                 min="0.05"
@@ -269,7 +272,7 @@ export const SpectrogramViewer: React.FC<SpectrogramViewerProps> = ({
                 step="0.05"
                 value={threshold}
                 onChange={(e) => onThresholdChange(parseFloat(e.target.value))}
-                className="w-16 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                className="w-16 h-1 bg-[#18181b] rounded-lg appearance-none cursor-pointer accent-emerald-400"
               />
               <span className="font-mono text-emerald-400 text-[11px] font-semibold w-7">
                 {Math.round(threshold * 100)}%
@@ -278,14 +281,16 @@ export const SpectrogramViewer: React.FC<SpectrogramViewerProps> = ({
           )}
 
           {/* Colormap selection */}
-          <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800">
-            <span className="text-slate-500">色階:</span>
+          <div className="flex items-center gap-1 bg-[#27272a] px-2 py-1 rounded-xl border border-[#3f3f46]">
+            <span className="text-zinc-400 mr-1 text-[11px]">色階:</span>
             {(['magma', 'inferno', 'viridis'] as const).map((cm) => (
               <button
                 key={cm}
                 onClick={() => setColormap(cm)}
-                className={`px-2 py-0.5 rounded uppercase text-[10px] font-mono transition-colors ${
-                  colormap === cm ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40' : 'text-slate-400 hover:text-white'
+                className={`px-2 py-0.5 rounded-lg uppercase text-[10px] font-mono transition-all cursor-pointer ${
+                  colormap === cm
+                    ? 'bg-[#18181b] text-emerald-400 font-bold border border-emerald-500/40 shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 {cm}
@@ -294,17 +299,17 @@ export const SpectrogramViewer: React.FC<SpectrogramViewerProps> = ({
           </div>
 
           {/* Height Selector */}
-          <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800">
-            <Maximize2 className="w-3.5 h-3.5 text-slate-400 mr-0.5" />
-            <span className="text-slate-500">高度:</span>
+          <div className="flex items-center gap-1 bg-[#27272a] px-2 py-1 rounded-xl border border-[#3f3f46]">
+            <Maximize2 className="w-3.5 h-3.5 text-zinc-400 mr-0.5" />
+            <span className="text-zinc-400 mr-0.5 text-[11px]">高度:</span>
             {[380, 480, 600].map((h) => (
               <button
                 key={h}
                 onClick={() => setViewHeight(h)}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                className={`px-1.5 py-0.5 rounded-lg text-[10px] font-mono transition-all cursor-pointer ${
                   viewHeight === h
-                    ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-[#18181b] text-emerald-400 font-bold border border-emerald-500/40 shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 {h}px
@@ -313,25 +318,25 @@ export const SpectrogramViewer: React.FC<SpectrogramViewerProps> = ({
           </div>
 
           {/* Zoom controls */}
-          <div className="flex items-center gap-1 bg-slate-950 px-1 py-1 rounded-lg border border-slate-800">
+          <div className="flex items-center gap-1 bg-[#27272a] px-1.5 py-1 rounded-xl border border-[#3f3f46]">
             <button
               onClick={() => setZoomLevel((z) => Math.max(1, z - 0.5))}
-              className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="p-1 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-[#18181b] transition-colors cursor-pointer"
               title="縮小"
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
-            <span className="px-1.5 font-mono text-[11px] text-slate-300">{zoomLevel}x</span>
+            <span className="px-1.5 font-mono text-[11px] text-zinc-300 font-medium">{zoomLevel}x</span>
             <button
               onClick={() => setZoomLevel((z) => Math.min(5, z + 0.5))}
-              className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="p-1 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-[#18181b] transition-colors cursor-pointer"
               title="放大"
             >
               <ZoomIn className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setZoomLevel(1)}
-              className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="p-1 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-[#18181b] transition-colors cursor-pointer"
               title="重設縮放"
             >
               <RotateCcw className="w-3 h-3" />
@@ -341,10 +346,10 @@ export const SpectrogramViewer: React.FC<SpectrogramViewerProps> = ({
       </div>
 
       {/* Main Canvas & Frequency Axis */}
-      <div className="flex w-full gap-2 items-stretch">
+      <div className="flex w-full gap-2 items-stretch pt-1">
         {/* Y-Axis (Frequency kHz) */}
         <div
-          className="flex flex-col justify-between py-1 text-[11px] font-mono text-slate-400 select-none text-right w-12 shrink-0"
+          className="flex flex-col justify-between py-1 text-[11px] font-mono text-zinc-400 select-none text-right w-12 shrink-0"
           style={{ height: `${viewHeight}px` }}
         >
           <span>{(maxFreq / 1000).toFixed(0)}k</span>
@@ -360,7 +365,7 @@ export const SpectrogramViewer: React.FC<SpectrogramViewerProps> = ({
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           onClick={handleClick}
-          className="relative flex-1 overflow-x-auto overflow-y-hidden rounded-xl border border-slate-800/80 bg-black cursor-crosshair"
+          className="relative flex-1 overflow-x-auto overflow-y-hidden rounded-xl border border-[#27272a] bg-[#0c0c0e] cursor-crosshair shadow-inner"
           style={{ height: `${viewHeight}px` }}
         >
           {/* Spectrogram Image Canvas */}
@@ -380,13 +385,13 @@ export const SpectrogramViewer: React.FC<SpectrogramViewerProps> = ({
           {/* Live Hover Tooltip */}
           {mousePos && (
             <div
-              className="pointer-events-none absolute z-20 px-2 py-1 rounded bg-slate-950/90 border border-slate-700 text-[11px] font-mono text-slate-200 shadow-2xl backdrop-blur-sm -translate-y-8"
+              className="pointer-events-none absolute z-20 px-2.5 py-1.5 rounded-xl bg-[#18181b]/95 border border-[#3f3f46] text-[11px] font-mono text-zinc-200 shadow-2xl backdrop-blur-md -translate-y-8"
               style={{ left: Math.min(mousePos.x + 10, (containerRef.current?.clientWidth || 500) - 130), top: mousePos.y }}
             >
-              <div>時間: {(mousePos.time * 1000).toFixed(1)} ms</div>
-              <div>頻率: {(mousePos.freq / 1000).toFixed(1)} kHz</div>
+              <div>時間: <span className="text-zinc-100 font-semibold">{(mousePos.time * 1000).toFixed(1)} ms</span></div>
+              <div>頻率: <span className="text-zinc-100 font-semibold">{(mousePos.freq / 1000).toFixed(1)} kHz</span></div>
               {hoveredDetection && (
-                <div className="mt-1 pt-1 border-t border-slate-800 text-emerald-400 font-bold">
+                <div className="mt-1 pt-1 border-t border-[#27272a] text-emerald-400 font-bold">
                   {hoveredDetection.species} ({(hoveredDetection.confidence * 100).toFixed(1)}%)
                 </div>
               )}
@@ -396,15 +401,16 @@ export const SpectrogramViewer: React.FC<SpectrogramViewerProps> = ({
       </div>
 
       {/* X-Axis (Time ms/s) */}
-      <div className="flex justify-between pl-14 text-[10px] font-mono text-slate-400 select-none">
+      <div className="flex justify-between pl-14 text-[10px] font-mono text-zinc-400 select-none pt-1">
         <span>0 ms</span>
         <span>{(duration * 250).toFixed(0)} ms</span>
         <span>{(duration * 500).toFixed(0)} ms</span>
         <span>{(duration * 750).toFixed(0)} ms</span>
-        <span>{(duration * 1000).toFixed(0)} ms (長度: {duration.toFixed(2)}s)</span>
+        <span className="text-zinc-300 font-medium">{(duration * 1000).toFixed(0)} ms (總長: {duration.toFixed(2)}s)</span>
       </div>
     </div>
   );
+
 };
 
 /**
@@ -432,3 +438,4 @@ function getColormapRGB(v: number, name: 'magma' | 'viridis' | 'inferno'): [numb
     ];
   }
 }
+

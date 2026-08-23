@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { UploadCloud, FileAudio, PlayCircle, Loader2, Sparkles } from 'lucide-react';
+import { UploadCloud, Loader2, Sparkles } from 'lucide-react';
 
 interface FileUploaderProps {
   onFileSelected: (file: File | ArrayBuffer, filename: string) => void;
@@ -67,11 +67,11 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={() => !isLoading && fileInputRef.current?.click()}
-        className={`relative group cursor-pointer transition-all duration-300 rounded-2xl border-2 border-dashed p-8 text-center flex flex-col items-center justify-center ${
+        className={`relative group cursor-pointer transition-all duration-200 rounded-2xl border-2 border-dashed p-8 sm:p-10 text-center flex flex-col items-center justify-center ${
           isDragOver
-            ? 'border-emerald-400 bg-emerald-950/20 scale-[1.01]'
-            : 'border-slate-700/70 hover:border-emerald-500/60 bg-slate-900/40 hover:bg-slate-900/70'
-        } ${isLoading ? 'pointer-events-none opacity-80' : ''}`}
+            ? 'border-emerald-500 bg-[#27272a]/90 scale-[1.008] shadow-2xl ring-2 ring-emerald-500/20'
+            : 'border-[#27272a] hover:border-[#3f3f46] bg-[#18181b]/90 hover:bg-[#202024]'
+        } ${isLoading ? 'pointer-events-none opacity-85' : ''}`}
       >
         <input
           ref={fileInputRef}
@@ -83,17 +83,17 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
 
         {isLoading ? (
           <div className="flex flex-col items-center gap-4 py-4 w-full max-w-md">
-            <div className="relative flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+            <div className="relative flex items-center justify-center w-16 h-16 rounded-2xl bg-[#121214] border border-emerald-500/30 text-emerald-400 shadow-inner">
               <Loader2 className="w-8 h-8 animate-spin" />
             </div>
             <div className="w-full">
-              <div className="flex justify-between text-xs mb-1.5 font-medium text-slate-300">
-                <span>{progressText}</span>
-                <span className="font-mono text-emerald-400">{progressPct}%</span>
+              <div className="flex justify-between text-xs mb-2 font-medium text-zinc-300">
+                <span className="font-mono">{progressText}</span>
+                <span className="font-mono text-emerald-400 font-bold">{progressPct}%</span>
               </div>
-              <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+              <div className="w-full h-2 bg-[#121214] rounded-full overflow-hidden border border-[#27272a]">
                 <div
-                  className="h-full bg-gradient-to-r from-teal-500 to-emerald-400 transition-all duration-300 rounded-full"
+                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300 rounded-full"
                   style={{ width: `${progressPct}%` }}
                 />
               </div>
@@ -101,15 +101,15 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
           </div>
         ) : (
           <div className="flex flex-col items-center gap-3">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-b from-slate-800 to-slate-900 border border-slate-700 flex items-center justify-center text-emerald-400 group-hover:scale-110 group-hover:text-emerald-300 transition-transform shadow-inner">
+            <div className="w-14 h-14 rounded-2xl bg-[#121214] border border-[#27272a] flex items-center justify-center text-emerald-400 group-hover:text-emerald-300 group-hover:border-emerald-500/40 group-hover:scale-105 transition-all shadow-inner">
               <UploadCloud className="w-7 h-7" />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-slate-200">
-                拖曳 <span className="text-emerald-400">.wav</span> 蝙蝠錄音檔至此，或點擊選擇檔案
+              <h3 className="text-base font-semibold text-zinc-200">
+                拖曳 <span className="text-emerald-400 font-mono">.wav</span> 蝙蝠錄音檔至此，或點擊選擇檔案
               </h3>
-              <p className="text-xs text-slate-400 mt-1">
-                支援 16/24/32-bit PCM，保留 256k~500kHz 高頻超音波（100% 在瀏覽器內運算）
+              <p className="text-xs text-zinc-400 mt-1.5 font-sans">
+                支援 16/24/32-bit PCM，保留 256k~500kHz 高頻超音波（100% 瀏覽器本地端運算）
               </p>
             </div>
           </div>
@@ -118,12 +118,12 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
 
       {/* Demo Audio Button */}
       {!isLoading && (
-        <div className="flex items-center justify-center gap-2 mt-3">
-          <span className="text-xs text-slate-500">沒有音檔？</span>
+        <div className="flex items-center justify-center gap-2 mt-3.5">
+          <span className="text-xs text-zinc-400">沒有音檔？</span>
           <button
             onClick={handleTryDemo}
             type="button"
-            className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-emerald-300 bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-800/50 rounded-lg transition-colors shadow-sm"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-zinc-200 hover:text-emerald-300 bg-[#18181b] hover:bg-[#27272a] border border-[#3f3f46] hover:border-emerald-500/40 rounded-xl transition-all shadow-sm cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
             一鍵試用內建範例錄音 (Demo WAV)
@@ -133,3 +133,5 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     </div>
   );
 };
+
+

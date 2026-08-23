@@ -9,7 +9,7 @@ import { AudioPlayer } from '../components/AudioPlayer';
 import { DetectionTable } from '../components/DetectionTable';
 import { batDetector } from '../lib/inference/detector';
 import { AudioAnalysisResult, Detection, ModelMetadata } from '../lib/types';
-import { Activity, Sparkles, Zap, ShieldCheck, HelpCircle } from 'lucide-react';
+import { Activity, Zap, ShieldCheck, Waves, FileAudio, Clock } from 'lucide-react';
 
 export default function Home() {
   const [metadata, setMetadata] = useState<ModelMetadata | null>(null);
@@ -93,7 +93,7 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[#07090e] text-slate-100 flex flex-col selection:bg-emerald-500/30 selection:text-emerald-300">
+    <div className="min-h-screen bg-[#121214] text-zinc-100 flex flex-col selection:bg-emerald-500/25 selection:text-emerald-300">
       {/* Top Navigation */}
       <Header metadata={metadata} backend={backend} isReady={isModelReady} />
 
@@ -111,31 +111,46 @@ export default function Home() {
 
         {/* Results Studio View */}
         {result && (
-          <section className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <section className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
             {/* Quick Metrics Bar */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col">
-                <span className="text-[11px] text-slate-400 font-medium">檔案名稱</span>
-                <span className="text-sm font-semibold text-slate-200 truncate" title={result.filename}>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+              <div className="p-4 rounded-2xl bg-[#18181b] border border-[#27272a] shadow-lg flex flex-col justify-between">
+                <div className="flex items-center gap-1.5 text-zinc-400 text-xs font-medium mb-1">
+                  <FileAudio className="w-3.5 h-3.5 text-zinc-500" />
+                  <span>音訊檔案名稱</span>
+                </div>
+                <span className="text-sm font-semibold text-zinc-200 truncate font-mono" title={result.filename}>
                   {result.filename}
                 </span>
               </div>
-              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col">
-                <span className="text-[11px] text-slate-400 font-medium">音訊長度 / 採樣率</span>
+
+              <div className="p-4 rounded-2xl bg-[#18181b] border border-[#27272a] shadow-lg flex flex-col justify-between">
+                <div className="flex items-center gap-1.5 text-zinc-400 text-xs font-medium mb-1">
+                  <Waves className="w-3.5 h-3.5 text-emerald-500/70" />
+                  <span>時長 / 採樣率</span>
+                </div>
                 <span className="text-sm font-mono font-semibold text-emerald-400">
-                  {result.duration.toFixed(2)}s @ {(result.sample_rate / 1000).toFixed(0)}kHz
+                  {result.duration.toFixed(2)}s <span className="text-xs text-zinc-400 font-normal">@ {(result.sample_rate / 1000).toFixed(0)}kHz</span>
                 </span>
               </div>
-              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col">
-                <span className="text-[11px] text-slate-400 font-medium">偵測叫聲數 (&ge;{Math.round(threshold * 100)}%)</span>
+
+              <div className="p-4 rounded-2xl bg-[#18181b] border border-[#27272a] shadow-lg flex flex-col justify-between">
+                <div className="flex items-center gap-1.5 text-zinc-400 text-xs font-medium mb-1">
+                  <Activity className="w-3.5 h-3.5 text-cyan-500/70" />
+                  <span>定位叫聲數 (&ge;{Math.round(threshold * 100)}%)</span>
+                </div>
                 <span className="text-sm font-mono font-bold text-cyan-400">
-                  {result.detections.filter((d) => d.detection_score >= threshold).length} / {result.detections.length} 次
+                  {result.detections.filter((d) => d.detection_score >= threshold).length} <span className="text-xs text-zinc-400 font-normal">/ {result.detections.length} 次</span>
                 </span>
               </div>
-              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col">
-                <span className="text-[11px] text-slate-400 font-medium">本地推論耗時</span>
+
+              <div className="p-4 rounded-2xl bg-[#18181b] border border-[#27272a] shadow-lg flex flex-col justify-between">
+                <div className="flex items-center gap-1.5 text-zinc-400 text-xs font-medium mb-1">
+                  <Clock className="w-3.5 h-3.5 text-purple-500/70" />
+                  <span>端側推論耗時</span>
+                </div>
                 <span className="text-sm font-mono font-semibold text-purple-400">
-                  {result.inference_time_ms} ms ({backend.toUpperCase()})
+                  {result.inference_time_ms} ms <span className="text-[11px] text-zinc-400 font-normal">({backend.toUpperCase()})</span>
                 </span>
               </div>
             </div>
@@ -177,33 +192,33 @@ export default function Home() {
         {/* Feature Highlights (when no file is loaded) */}
         {!result && !isLoading && (
           <section className="grid sm:grid-cols-3 gap-4 pt-4">
-            <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800/80 space-y-2">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                <Zap className="w-4 h-4" />
+            <div className="p-6 rounded-2xl bg-[#18181b] border border-[#27272a] space-y-2.5 hover:border-[#3f3f46] transition-colors shadow-md">
+              <div className="w-10 h-10 rounded-xl bg-[#121214] border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-inner">
+                <Zap className="w-5 h-5" />
               </div>
-              <h4 className="text-sm font-semibold text-slate-200">WebAssembly + WebGPU 加速</h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
+              <h4 className="text-sm font-semibold text-zinc-200">WebAssembly + WebGPU 核心</h4>
+              <p className="text-xs text-zinc-400 leading-relaxed font-sans">
                 利用 ONNX Runtime Web 直接調用使用者的本機 GPU 或 CPU SIMD 進行即時神經網路推論，毫秒級產出分析結果。
               </p>
             </div>
 
-            <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800/80 space-y-2">
-              <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-                <Activity className="w-4 h-4" />
+            <div className="p-6 rounded-2xl bg-[#18181b] border border-[#27272a] space-y-2.5 hover:border-[#3f3f46] transition-colors shadow-md">
+              <div className="w-10 h-10 rounded-xl bg-[#121214] border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-inner">
+                <Activity className="w-5 h-5" />
               </div>
-              <h4 className="text-sm font-semibold text-slate-200">500kHz 超音波無損解析</h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                自行封裝 PCM WAV 解碼器，杜絕瀏覽器強制降採樣問題，完整保留高達 128kHz+ 的蝙蝠超音波特徵。
+              <h4 className="text-sm font-semibold text-zinc-200">500kHz 超音波高解析支援</h4>
+              <p className="text-xs text-zinc-400 leading-relaxed font-sans">
+                自行封裝 PCM WAV 解碼器，杜絕瀏覽器強制降採樣問題，完整保留高達 128kHz+ 的蝙蝠超音波聲學特徵。
               </p>
             </div>
 
-            <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800/80 space-y-2">
-              <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
-                <ShieldCheck className="w-4 h-4" />
+            <div className="p-6 rounded-2xl bg-[#18181b] border border-[#27272a] space-y-2.5 hover:border-[#3f3f46] transition-colors shadow-md">
+              <div className="w-10 h-10 rounded-xl bg-[#121214] border border-purple-500/30 flex items-center justify-center text-purple-400 shadow-inner">
+                <ShieldCheck className="w-5 h-5" />
               </div>
-              <h4 className="text-sm font-semibold text-slate-200">零伺服器 & 100% 隱私安全</h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                可純靜態部署至 Vercel。音訊檔案完全不離開您的電腦，極端保障生態調查資料的隱私與安全性。
+              <h4 className="text-sm font-semibold text-zinc-200">100% 離線隱私安全</h4>
+              <p className="text-xs text-zinc-400 leading-relaxed font-sans">
+                可純靜態託管於 Vercel / GitHub Pages。音訊檔案完全不離開您的電腦，極端保障野外生態調查資料的機密性。
               </p>
             </div>
           </section>
@@ -211,12 +226,14 @@ export default function Home() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800/80 py-6 px-6 text-center text-xs text-slate-500 space-y-1">
-        <p>BatDetect2 In-Browser Studio • Powered by Next.js & ONNX Runtime Web</p>
-        <p className="text-[11px] text-slate-600">
+      <footer className="border-t border-[#27272a] py-6 px-6 text-center text-xs text-zinc-500 space-y-1 mt-auto">
+        <p className="font-mono">BatDetect2 In-Browser Studio • Powered by Next.js & ONNX Runtime Web</p>
+        <p className="text-[11px] text-zinc-600">
           支援一鍵部署至 Vercel (Static Export) • 零後端維護成本
         </p>
       </footer>
     </div>
   );
+
 }
+
