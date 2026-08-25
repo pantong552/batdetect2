@@ -1,0 +1,36 @@
+trainer:
+  precision: "16-mixed"
+  max_epochs: 100
+  check_val_every_n_epoch: 1
+  log_every_n_steps: 1
+  accelerator: "auto"
+  deterministic: true
+
+train_loader:
+  batch_size: 4
+  shuffle: true
+
+optimizer:
+  name: "adam"
+  learning_rate: 0.001
+
+scheduler:
+  name: "cosine_annealing"
+  t_max: 100
+  warmup_epochs: 5
+  warmup_start_factor: 0.1
+  eta_min: 0.0
+
+loss:
+  detection:
+    weight: 1.0
+    focal:
+      alpha: 2.0
+      beta: 4.0
+  classification:
+    weight: 2.0
+    focal:
+      alpha: 2.0
+      beta: 4.0
+  size:
+    weight: 1.5

@@ -1,0 +1,21 @@
+samplerate: 384000
+preprocess:
+  audio_transforms: []
+  spectrogram_transforms:
+    - name: "pcen"
+      time_constant: 0.4
+      gain: 0.98
+      bias: 2.0
+      power: 0.5
+    - name: "spectral_mean_subtraction"
+  stft:
+    window_duration: 0.002
+    window_overlap: 0.75
+    window_fn: "hann"
+  frequencies:
+    min_freq: 10000
+    max_freq: 128000
+  size:
+    name: "resize_spec"
+    height: 128
+    resize_factor: 0.5

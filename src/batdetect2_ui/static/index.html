@@ -206,14 +206,21 @@
               </div>
 
               <div class="form-row">
+                <label for="train-accumulate-grad-batches">
+                  <span>Accumulate Grad Batches</span>
+                </label>
+                <input type="number" id="train-accumulate-grad-batches" class="vsc-input" value="2" min="1" max="128" placeholder="2" title="Accumulate gradients across batches before updating weights">
+              </div>
+            </div>
+
+            <div class="form-cols-2">
+              <div class="form-row">
                 <label for="train-lr">
                   <span>Learning Rate</span>
                 </label>
                 <input type="number" id="train-lr" class="vsc-input" value="0.001" step="0.0001" min="0.00001">
               </div>
-            </div>
 
-            <div class="form-cols-2">
               <div class="form-row">
                 <label for="train-optimizer">
                   <span>Optimizer</span>
@@ -224,7 +231,9 @@
                   <option value="sgd">SGD</option>
                 </select>
               </div>
+            </div>
 
+            <div class="form-cols-2">
               <div class="form-row">
                 <label for="train-scheduler">
                   <span>LR Scheduler</span>
@@ -234,40 +243,38 @@
                   <option value="none">None / Constant</option>
                 </select>
               </div>
-            </div>
 
-            <div class="form-cols-2">
               <div class="form-row" id="warmup-epochs-row">
                 <label for="warmup-epochs-input">
                   <span>Warmup Epochs</span>
                 </label>
                 <input type="number" id="warmup-epochs-input" class="vsc-input" value="5" min="0" max="100" placeholder="5">
               </div>
+            </div>
 
+            <div class="form-cols-2">
               <div class="form-row">
                 <label for="val-check-interval">
                   <span>Check Val Every N Epoch</span>
                 </label>
                 <input type="number" id="val-check-interval" class="vsc-input" value="1" min="1">
               </div>
-            </div>
 
-            <div class="form-cols-2">
               <div class="form-row">
                 <label for="seed-input">
                   <span>Random Seed</span>
                 </label>
                 <input type="number" id="seed-input" class="vsc-input" value="42">
               </div>
+            </div>
 
-              <div class="form-row">
-                <label>
-                  <span>Data Workers (Train / Val)</span>
-                </label>
-                <div class="input-group">
-                  <input type="number" id="train-workers-input" class="vsc-input" value="0" min="0" max="16" placeholder="Train: 0" title="Train Workers">
-                  <input type="number" id="val-workers-input" class="vsc-input" value="0" min="0" max="16" placeholder="Val: 0" title="Val Workers">
-                </div>
+            <div class="form-row">
+              <label>
+                <span>Data Workers (Train / Val)</span>
+              </label>
+              <div class="input-group">
+                <input type="number" id="train-workers-input" class="vsc-input" value="0" min="0" max="16" placeholder="Train: 0" title="Train Workers">
+                <input type="number" id="val-workers-input" class="vsc-input" value="0" min="0" max="16" placeholder="Val: 0" title="Val Workers">
               </div>
             </div>
 

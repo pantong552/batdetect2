@@ -18,10 +18,18 @@ classification_targets:
     tags:
       - key: class
         value: Hipposideros armiger
+  - name: hyppul
+    tags:
+      - key: class
+        value: Hypsugo pulveratus        
   - name: myohor
     tags:
       - key: class
         value: Myotis horsfieldii
+  - name: pipabr
+    tags:
+      - key: class
+        value: Pipistrellus abramus        
   - name: pipten
     tags:
       - key: class

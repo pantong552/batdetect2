@@ -18,9 +18,21 @@ sources:
     description: LBB recordings and annotations
     annotations_dir: Test_data/anns/LBB
     audio_dir: Test_data/audio/LBB
+    
+  - format: batdetect2
+    name: JP Species Data
+    description: JP recordings and annotations
+    annotations_dir: Test_data/anns/JP
+    audio_dir: Test_data/audio/JP    
 
   - format: batdetect2
     name: LP Species Data
     description: LP recordings and annotations
     annotations_dir: Test_data/anns/LP
     audio_dir: Test_data/audio/LP
+
+  - format: batdetect2
+    name: CP Species Data
+    description: CP recordings and annotations
+    annotations_dir: Test_data/anns/CP
+    audio_dir: Test_data/audio/CP

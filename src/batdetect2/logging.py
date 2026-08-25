@@ -84,7 +84,7 @@ class DVCLiveConfig(BaseLoggerConfig):
 
 class CSVLoggerConfig(BaseLoggerConfig):
     name: Literal["csv"] = "csv"
-    flush_logs_every_n_steps: int = 100
+    flush_logs_every_n_steps: int = 1
 
 
 class TensorBoardLoggerConfig(BaseLoggerConfig):

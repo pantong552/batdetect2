@@ -222,13 +222,14 @@ def resample_audio(
     if sr == samplerate:
         return wav
 
-    if method == "poly":
+    method_clean = method.lower().replace("resample_", "") if method else "poly"
+    if method_clean == "poly":
         return resample_audio_poly(
             wav,
             sr_orig=sr,
             sr_new=samplerate,
         )
-    elif method == "fourier":
+    elif method_clean in ("fourier", "fft"):
         return resample_audio_fourier(
             wav,
             sr_orig=sr,

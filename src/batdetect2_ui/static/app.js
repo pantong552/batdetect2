@@ -494,6 +494,7 @@ async function startTraining() {
 
   const batch_size = parseInt(document.getElementById('train-batch-size').value) || 4;
   const precision = document.getElementById('train-precision').value || '16-mixed';
+  const accumulateGradBatches = parseInt(document.getElementById('train-accumulate-grad-batches')?.value) || 2;
   const lr = parseFloat(document.getElementById('train-lr').value) || 0.001;
   const optimizerName = document.getElementById('train-optimizer').value || 'adam';
   const schedulerName = document.getElementById('train-scheduler').value || 'cosine_annealing';
@@ -542,6 +543,7 @@ async function startTraining() {
   const training_config = {
     trainer: {
       precision: precision,
+      accumulate_grad_batches: accumulateGradBatches,
       max_epochs: num_epochs,
       check_val_every_n_epoch: checkValEvery,
     },

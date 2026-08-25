@@ -214,8 +214,21 @@ async def export_checkpoint_onnx(payload: Dict[str, Any]):
     output_models_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        # 在背景線程非同步調用 export_checkpoint
-        from scripts.export_onnx import export_checkpoint
+        # 在背景線程非同步調用 export_checkpoint (使用 importlib 動態載入專案 scripts/export_onnx.py)
+        import importlib.util
+
+        export_script = WORKSPACE_ROOT / "scripts" / "export_onnx.py"
+        if not export_script.exists():
+            raise FileNotFoundError(f"找不到導出腳本: {export_script}")
+
+        spec = importlib.util.spec_from_file_location("export_onnx", export_script)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"無法載入導出腳本: {export_script}")
+
+        export_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(export_module)
+        export_checkpoint = export_module.export_checkpoint
+
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, export_checkpoint, str(ckpt_path), str(output_models_dir))
 
