@@ -1048,6 +1048,21 @@ async def get_dataset_summary(
     total_audio_files = len(audio_files_info)
     total_calls = len(annotations_list)
 
+    # 識別包含蝙蝠叫聲的音訊與純負樣本/噪音音訊 (Negative / Noise files)
+    positive_audio_filenames = set(ann["audio_filename"] for ann in annotations_list)
+    noise_audio_filenames = set()
+    for stem_name in annotated_audio_filenames:
+        if stem_name not in positive_audio_filenames:
+            noise_audio_filenames.add(stem_name)
+
+    total_noise_files = len(noise_audio_filenames)
+    total_noise_duration_sec = sum(
+        audio_files_info[nf]["duration"] for nf in noise_audio_filenames if nf in audio_files_info
+    )
+    total_noise_size_bytes = sum(
+        audio_files_info[nf]["size_bytes"] for nf in noise_audio_filenames if nf in audio_files_info
+    )
+
     # 4. 深度物種 (Species / Class) 統計分析
     species_dict = {}
     for ann in annotations_list:
@@ -1089,6 +1104,7 @@ async def get_dataset_summary(
 
         species_summary_table.append({
             "class_name": cls_name,
+            "is_negative": False,
             "num_calls": num_calls,
             "call_percentage": call_pct,
             "num_recordings": len(data["recordings"]),
@@ -1111,6 +1127,30 @@ async def get_dataset_summary(
     # 依照叫聲數量由多到少排序
     species_summary_table.sort(key=lambda x: x["num_calls"], reverse=True)
 
+    # 若存在負樣本/噪音檔案，加入專屬的負樣本統整列
+    if total_noise_files > 0:
+        species_summary_table.append({
+            "class_name": "Background Noise (Negative Samples)",
+            "is_negative": True,
+            "num_calls": 0,
+            "call_percentage": 0.0,
+            "num_recordings": total_noise_files,
+            "recording_percentage": round(total_noise_files / max(1, total_audio_files) * 100, 1),
+            "total_annotated_sec": round(total_noise_duration_sec, 2),
+            "avg_duration_ms": 0.0,
+            "min_duration_ms": 0.0,
+            "max_duration_ms": 0.0,
+            "mean_low_freq_khz": 0.0,
+            "mean_high_freq_khz": 0.0,
+            "min_low_freq_khz": 0.0,
+            "max_high_freq_khz": 0.0,
+            "mean_bandwidth_khz": 0.0,
+            "call_rate_per_min": 0.0,
+            "events_breakdown": {"Negative Sample": total_noise_files},
+            "primary_event": "Hard Negative",
+            "individuals_count": 0,
+        })
+
     # 5. 計算 VRAM 及 RAM 需求
     hardware_estimate = estimate_training_hardware(
         num_audio_files=total_audio_files,
@@ -1127,6 +1167,10 @@ async def get_dataset_summary(
     secs = int(total_audio_duration_sec % 60)
     duration_str = f"{hrs}h {mins}m {secs}s" if hrs > 0 else f"{mins}m {secs}s"
 
+    noise_mins = int((total_noise_duration_sec % 3600) // 60)
+    noise_secs = int(total_noise_duration_sec % 60)
+    noise_duration_str = f"{noise_mins}m {noise_secs}s"
+
     return {
         "success": True,
         "dataset_name": dataset_name,
@@ -1135,6 +1179,10 @@ async def get_dataset_summary(
         "overview": {
             "total_audio_files": total_audio_files,
             "total_annotated_files": len(annotated_audio_filenames),
+            "total_positive_files": len(positive_audio_filenames),
+            "total_noise_files": total_noise_files,
+            "total_noise_duration_formatted": noise_duration_str,
+            "total_noise_size_mb": round(total_noise_size_bytes / (1024 ** 2), 2),
             "unannotated_files": max(0, total_audio_files - len(annotated_audio_filenames)),
             "annotation_coverage_pct": round(len(annotated_audio_filenames) / max(1, total_audio_files) * 100, 1),
             "total_duration_sec": round(total_audio_duration_sec, 2),
@@ -1142,7 +1190,7 @@ async def get_dataset_summary(
             "total_size_mb": round(total_audio_size_bytes / (1024 ** 2), 2),
             "total_size_gb": round(total_audio_size_bytes / (1024 ** 3), 2),
             "total_calls": total_calls,
-            "num_species": len(species_summary_table),
+            "num_species": len(species_dict),
             "samplerate_distribution": samplerate_counts,
             "channel_distribution": channel_counts,
             "sources": sources_summary,

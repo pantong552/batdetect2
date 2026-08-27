@@ -1822,10 +1822,12 @@ function renderDatasetSummaryUI(data) {
 
   // 1. KPI Cards
   document.getElementById('ds-stat-files').textContent = `${ov.total_audio_files}`;
-  document.getElementById('ds-stat-annotated-cov').textContent = `${ov.total_annotated_files} annotated (${ov.annotation_coverage_pct}%)`;
+  const noiseDetailStr = ov.total_noise_files > 0 ? ` (${ov.total_positive_files} pos + ${ov.total_noise_files} noise)` : '';
+  document.getElementById('ds-stat-annotated-cov').textContent = `${ov.total_annotated_files} annotated${noiseDetailStr}`;
 
   document.getElementById('ds-stat-duration').textContent = `${ov.total_duration_formatted}`;
-  document.getElementById('ds-stat-size').textContent = `${ov.total_size_mb} MB (${ov.total_size_gb} GB)`;
+  const noiseDurDetail = ov.total_noise_files > 0 ? ` (Noise: ${ov.total_noise_duration_formatted})` : '';
+  document.getElementById('ds-stat-size').textContent = `${ov.total_size_mb} MB (${ov.total_size_gb} GB)${noiseDurDetail}`;
 
   document.getElementById('ds-stat-calls').textContent = `${ov.total_calls.toLocaleString()}`;
   const totalMins = ov.total_duration_sec > 0 ? (ov.total_duration_sec / 60) : 1;
@@ -1833,7 +1835,8 @@ function renderDatasetSummaryUI(data) {
   document.getElementById('ds-stat-call-rate').textContent = `${avgDensity} calls / min density`;
 
   document.getElementById('ds-stat-classes').textContent = `${ov.num_species}`;
-  document.getElementById('ds-stat-sources').textContent = `${ov.sources ? ov.sources.length : 0} data sources`;
+  const noiseSourceCount = (ov.sources || []).filter(s => s.name.toLowerCase().includes('noise') || s.calls_count === 0).length;
+  document.getElementById('ds-stat-sources').textContent = `${ov.sources ? ov.sources.length : 0} sources (${noiseSourceCount} noise)`;
 
   // 2. Hardware Estimate UI
   if (hw) {
@@ -1842,11 +1845,15 @@ function renderDatasetSummaryUI(data) {
 
   // 3. Species Summary Table
   const countBadge = document.getElementById('ds-species-count-badge');
-  if (countBadge) countBadge.textContent = `${sp.length} Species`;
+  if (countBadge) {
+    countBadge.textContent = ov.total_noise_files > 0
+      ? `${ov.num_species} Bat Species + ${ov.total_noise_files} Noise Files`
+      : `${ov.num_species} Species`;
+  }
   renderSpeciesTable();
 
   // 4. Species Distribution Chart
-  renderSpeciesChart(sp);
+  renderSpeciesChart(sp.filter(s => !s.is_negative));
 
   // 5. Sources Table
   renderSourcesTable(ov.sources || []);
@@ -2060,6 +2067,45 @@ function renderSpeciesTable() {
   const maxCalls = Math.max(...list.map(s => s.num_calls), 1);
 
   tbody.innerHTML = list.map(s => {
+    if (s.is_negative) {
+      return `
+        <tr style="background: rgba(220, 220, 170, 0.05); border-left: 3px solid #dcdcaa;">
+          <td style="font-weight: 600; color: #dcdcaa; font-family: var(--vsc-font-mono);">
+            ${s.class_name}
+            <span class="vsc-badge" style="background:#3e3e42; color:#dcdcaa; font-size:10px; margin-left:6px;">NEGATIVE SAMPLE</span>
+          </td>
+          <td>
+            <span style="font-family: var(--vsc-font-mono); color: #858585; font-size:11px;">0 calls (Pure Background)</span>
+          </td>
+          <td>
+            <span style="font-family: var(--vsc-font-mono); color: #4ec9b0; font-weight:600;">${s.num_recordings}</span>
+            <span style="font-size: 10px; color: #858585;">(${s.recording_percentage}%)</span>
+          </td>
+          <td style="font-family: var(--vsc-font-mono); color: #89d185;">
+            ${s.total_annotated_sec}s
+          </td>
+          <td style="color: #858585; font-size:11px;">
+            N/A (Non-bat)
+          </td>
+          <td style="color: #858585; font-size:11px;">
+            N/A (All Freqs)
+          </td>
+          <td style="color: #858585; font-size:11px;">
+            N/A
+          </td>
+          <td style="font-family: var(--vsc-font-mono); color: #858585;">
+            0.0
+          </td>
+          <td>
+            <span class="vsc-pill-blue" style="background: #2d2d30; color: #dcdcaa; border: 1px solid #454545; font-size: 10px;">${s.primary_event}</span>
+          </td>
+          <td>
+            <span style="font-family: var(--vsc-font-mono); color: #858585;">0</span>
+          </td>
+        </tr>
+      `;
+    }
+
     const barWidth = Math.max(4, Math.round((s.num_calls / maxCalls) * 100));
 
     return `

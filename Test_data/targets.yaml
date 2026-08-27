@@ -26,6 +26,10 @@ classification_targets:
     tags:
       - key: class
         value: Myotis horsfieldii
+  - name: nycpla
+    tags:
+      - key: class
+        value: Nyctalus plancyi        
   - name: pipabr
     tags:
       - key: class

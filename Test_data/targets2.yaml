@@ -1,0 +1,121 @@
+detection_target:
+  name: bat
+  match_if:
+    name: all_of
+    conditions:
+      - name: has_tag
+        tag: { key: event, value: Echolocation }
+      - name: not
+        condition:
+          name: has_tag
+          tag: { key: class, value: Unknown }
+  assign_tags:
+    - key: class
+      value: Bat
+
+classification_targets:
+  - name: cnepac
+    tags:
+      - key: class
+        value: Cnephaeus pachyomus
+  - name: cynsph
+    tags:
+      - key: class
+        value: Cynopterus sphinx
+  - name: hiparm
+    tags:
+      - key: class
+        value: Hipposideros armiger
+  - name: hipgen
+    tags:
+      - key: class
+        value: Hipposideros gentilis
+  - name: hyppul
+    tags:
+      - key: class
+        value: Hypsugo pulveratus
+  - name: minful
+    tags:
+      - key: class
+        value: Miniopterus fuliginosus
+  - name: minmag
+    tags:
+      - key: class
+        value: Miniopterus magnater
+  - name: minpus
+    tags:
+      - key: class
+        value: Miniopterus pusillus
+  - name: moppli
+    tags:
+      - key: class
+        value: Mops plicatus
+  - name: myochi
+    tags:
+      - key: class
+        value: Myotis chinensis
+  - name: myohor
+    tags:
+      - key: class
+        value: Myotis horsfieldii
+  - name: myomur
+    tags:
+      - key: class
+        value: Myotis muricola
+  - name: myopil
+    tags:
+      - key: class
+        value: Myotis pilosus
+  - name: nycpla
+    tags:
+      - key: class
+        value: Nyctalus plancyi
+  - name: pipabr
+    tags:
+      - key: class
+        value: Pipistrellus abramus
+  - name: pipcey
+    tags:
+      - key: class
+        value: Pipistrellus ceylonicus
+  - name: pipten
+    tags:
+      - key: class
+        value: Pipistrellus tenuis
+  - name: rhiaff
+    tags:
+      - key: class
+        value: Rhinolophus affinis
+  - name: rhipus
+    tags:
+      - key: class
+        value: Rhinolophus pusillus
+  - name: rhisin
+    tags:
+      - key: class
+        value: Rhinolophus sinicus
+  - name: roules
+    tags:
+      - key: class
+        value: Rousettus leschenaultii
+  - name: scokuh
+    tags:
+      - key: class
+        value: Scotophilus kuhlii
+  - name: tapmel
+    tags:
+      - key: class
+        value: Taphozous melanopogon
+  - name: tylful
+    tags:
+      - key: class
+        value: Tylonycteris fulvida
+  - name: tylton
+    tags:
+      - key: class
+        value: Tylonycteris tonkinensis
+
+roi:
+  default:
+    name: anchor_bbox
+    anchor: top-left
