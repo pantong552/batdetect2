@@ -36,3 +36,8 @@ sources:
     description: CP recordings and annotations
     annotations_dir: Test_data/anns/CP
     audio_dir: Test_data/audio/CP
+ 
+  - format: batdetect2
+    name: Background Noise
+    audio_dir: data/audio/noise
+    annotations_dir: data/anns/noise
