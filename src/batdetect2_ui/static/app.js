@@ -76,6 +76,10 @@ function initNavigation() {
         loadExportedModels();
       } else if (target === 'experiments-tab') {
         loadExperimentsList();
+      } else if (target === 'dataset-summary-tab') {
+        if (!currentDatasetSummaryData) {
+          runDatasetAnalysis();
+        }
       }
     });
   });
@@ -1680,4 +1684,555 @@ function exportExpMetricsCSV() {
   link.click();
   document.body.removeChild(link);
 }
+
+// ==========================================================================
+// Dataset Summary & Hardware Resource Estimator Engine
+// ==========================================================================
+
+let currentDatasetSummaryData = null;
+let speciesSortField = 'num_calls';
+let speciesSortAsc = false;
+let speciesFilterKeyword = '';
+let dsSpeciesChart = null;
+
+function setDsSummaryPreset(path) {
+  const input = document.getElementById('ds-summary-path');
+  if (input) {
+    input.value = path;
+    runDatasetAnalysis();
+  }
+}
+
+function syncTrainDatasetFromConfig() {
+  const trainInput = document.getElementById('train-dataset-input');
+  const dsInput = document.getElementById('ds-summary-path');
+  const trainBatchSize = document.getElementById('train-batch-size');
+  const dsBatchSize = document.getElementById('ds-batch-size');
+  const trainWorkers = document.getElementById('train-workers');
+  const dsWorkers = document.getElementById('ds-workers');
+  const trainableSelect = document.getElementById('train-trainable');
+  const dsTrainable = document.getElementById('ds-trainable');
+
+  if (trainInput && dsInput && trainInput.value) {
+    dsInput.value = trainInput.value;
+  }
+  if (trainBatchSize && dsBatchSize && trainBatchSize.value) {
+    dsBatchSize.value = trainBatchSize.value;
+  }
+  if (trainWorkers && dsWorkers && trainWorkers.value) {
+    dsWorkers.value = trainWorkers.value;
+  }
+  if (trainableSelect && dsTrainable && trainableSelect.value) {
+    dsTrainable.value = trainableSelect.value;
+  }
+
+  runDatasetAnalysis();
+}
+
+async function runDatasetAnalysis() {
+  const btn = document.getElementById('btn-analyze-dataset');
+  const dsPath = (document.getElementById('ds-summary-path')?.value || 'Test_data/dataset.yaml').trim();
+  const batchSize = parseInt(document.getElementById('ds-batch-size')?.value) || 8;
+  const precision = document.getElementById('ds-precision')?.value || 'fp16';
+  const trainable = document.getElementById('ds-trainable')?.value || 'heads';
+  const workers = parseInt(document.getElementById('ds-workers')?.value) || 4;
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner" style="display:inline-block; width:12px; height:12px; border:2px solid #fff; border-top-color:transparent; border-radius:50%; animation:spin 0.6s linear infinite; margin-right:6px;"></span><span>Analyzing Dataset...</span>`;
+  }
+
+  try {
+    const res = await fetch('/api/dataset/summary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dataset_path: dsPath,
+        batch_size: batchSize,
+        train_workers: workers,
+        trainable: trainable,
+        precision: precision,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Dataset analysis failed');
+    }
+
+    const data = await res.json();
+    currentDatasetSummaryData = data;
+    renderDatasetSummaryUI(data);
+  } catch (err) {
+    console.error('Dataset analysis error:', err);
+    alert('Failed to analyze dataset: ' + err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        <span>Analyze Dataset</span>
+      `;
+    }
+  }
+}
+
+async function recalculateHardwareOnly() {
+  if (!currentDatasetSummaryData) {
+    return runDatasetAnalysis();
+  }
+
+  const dsPath = (document.getElementById('ds-summary-path')?.value || 'Test_data/dataset.yaml').trim();
+  const batchSize = parseInt(document.getElementById('ds-batch-size')?.value) || 8;
+  const precision = document.getElementById('ds-precision')?.value || 'fp16';
+  const trainable = document.getElementById('ds-trainable')?.value || 'heads';
+  const workers = parseInt(document.getElementById('ds-workers')?.value) || 4;
+
+  try {
+    const res = await fetch('/api/dataset/summary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dataset_path: dsPath,
+        batch_size: batchSize,
+        train_workers: workers,
+        trainable: trainable,
+        precision: precision,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      currentDatasetSummaryData.hardware_estimate = data.hardware_estimate;
+      renderHardwareEstimateUI(data.hardware_estimate);
+    }
+  } catch (e) {
+    console.warn('Recalculate hardware error:', e);
+  }
+}
+
+function renderDatasetSummaryUI(data) {
+  if (!data || !data.overview) return;
+
+  const ov = data.overview;
+  const sp = data.species_summary || [];
+  const hw = data.hardware_estimate;
+
+  // 1. KPI Cards
+  document.getElementById('ds-stat-files').textContent = `${ov.total_audio_files}`;
+  document.getElementById('ds-stat-annotated-cov').textContent = `${ov.total_annotated_files} annotated (${ov.annotation_coverage_pct}%)`;
+
+  document.getElementById('ds-stat-duration').textContent = `${ov.total_duration_formatted}`;
+  document.getElementById('ds-stat-size').textContent = `${ov.total_size_mb} MB (${ov.total_size_gb} GB)`;
+
+  document.getElementById('ds-stat-calls').textContent = `${ov.total_calls.toLocaleString()}`;
+  const totalMins = ov.total_duration_sec > 0 ? (ov.total_duration_sec / 60) : 1;
+  const avgDensity = (ov.total_calls / totalMins).toFixed(1);
+  document.getElementById('ds-stat-call-rate').textContent = `${avgDensity} calls / min density`;
+
+  document.getElementById('ds-stat-classes').textContent = `${ov.num_species}`;
+  document.getElementById('ds-stat-sources').textContent = `${ov.sources ? ov.sources.length : 0} data sources`;
+
+  // 2. Hardware Estimate UI
+  if (hw) {
+    renderHardwareEstimateUI(hw);
+  }
+
+  // 3. Species Summary Table
+  const countBadge = document.getElementById('ds-species-count-badge');
+  if (countBadge) countBadge.textContent = `${sp.length} Species`;
+  renderSpeciesTable();
+
+  // 4. Species Distribution Chart
+  renderSpeciesChart(sp);
+
+  // 5. Sources Table
+  renderSourcesTable(ov.sources || []);
+}
+
+function toggleHardwareMatrix(type) {
+  const vramBtn = document.getElementById('btn-show-vram-matrix');
+  const ramBtn = document.getElementById('btn-show-ram-matrix');
+  const vramContainer = document.getElementById('ds-vram-matrix-container');
+  const ramContainer = document.getElementById('ds-ram-matrix-container');
+  const title = document.getElementById('ds-matrix-title');
+
+  if (type === 'vram') {
+    if (vramBtn) { vramBtn.className = 'vsc-btn vsc-btn-xs vsc-btn-primary'; }
+    if (ramBtn) { ramBtn.className = 'vsc-btn vsc-btn-xs vsc-btn-outline'; }
+    if (vramContainer) vramContainer.style.display = 'block';
+    if (ramContainer) ramContainer.style.display = 'none';
+    if (title) title.textContent = 'GPU VRAM Requirement by Batch Size';
+  } else {
+    if (vramBtn) { vramBtn.className = 'vsc-btn vsc-btn-xs vsc-btn-outline'; }
+    if (ramBtn) { ramBtn.className = 'vsc-btn vsc-btn-xs vsc-btn-primary'; }
+    if (vramContainer) vramContainer.style.display = 'none';
+    if (ramContainer) ramContainer.style.display = 'block';
+    if (title) title.textContent = 'Host RAM Requirement by DataLoader Workers';
+  }
+}
+
+function renderHardwareEstimateUI(hw) {
+  if (!hw) return;
+
+  const vram = hw.vram;
+  const ram = hw.ram;
+  const adv = hw.advisory;
+  const ramAdv = hw.ram_advisory;
+  const cfg = hw.config_used;
+
+  // KPI
+  document.getElementById('ds-stat-vram').textContent = `${vram.total_gb} GB`;
+  document.getElementById('ds-stat-vram-sub').textContent = `Batch ${cfg.batch_size} (${cfg.precision.toUpperCase()}) | Safe: ${adv.recommended_batch_size || 2}`;
+
+  const ramStatEl = document.getElementById('ds-stat-ram');
+  if (ramStatEl) {
+    ramStatEl.textContent = `${ram.total_gb} GB`;
+    if (ramAdv && ramAdv.status === 'OOM_RISK') {
+      ramStatEl.style.color = '#f14c4c';
+    } else if (ramAdv && ramAdv.status === 'TIGHT') {
+      ramStatEl.style.color = '#dcdcaa';
+    } else {
+      ramStatEl.style.color = '#4ec9b0';
+    }
+  }
+  const ramSubEl = document.getElementById('ds-stat-ram-sub');
+  if (ramSubEl) {
+    ramSubEl.textContent = `Avail: ${ram.sys_available_gb} GB / Total: ${ram.sys_total_gb} GB`;
+  }
+
+  // Advisory Badge
+  const advBadge = document.getElementById('ds-advisory-badge');
+  const advDot = document.getElementById('ds-advisory-dot');
+  const advText = document.getElementById('ds-advisory-text');
+  const gpuTitle = document.getElementById('ds-gpu-title');
+  const gpuDesc = document.getElementById('ds-gpu-desc');
+
+  if (advBadge && advText) {
+    advText.textContent = `${adv.status} (GPU) / ${ramAdv ? ramAdv.status : 'OK'} (RAM)`;
+    advText.style.color = (adv.status === 'OOM_RISK' || (ramAdv && ramAdv.status === 'OOM_RISK')) ? '#f14c4c' : adv.status_color;
+    if (advDot) advDot.style.backgroundColor = advText.style.color;
+    gpuTitle.textContent = `GPU VRAM: ${adv.gpu_name} (Total ${adv.gpu_vram_gb} GB, Usable ${adv.usable_gpu_vram_gb} GB)`;
+    gpuDesc.textContent = adv.advice;
+  }
+
+  // Host RAM Advisory Box
+  const ramTitle = document.getElementById('ds-ram-title');
+  const ramDesc = document.getElementById('ds-ram-desc');
+  const ramBox = document.getElementById('ds-ram-advisory-box');
+  if (ramTitle && ramDesc && ramAdv) {
+    ramTitle.textContent = `Host RAM: ${ram.sys_used_gb} GB Used / ${ram.sys_total_gb} GB Total (${ram.sys_percent}% in use)`;
+    ramDesc.textContent = ramAdv.advice;
+    if (ramBox) {
+      ramBox.style.borderLeftColor = ramAdv.status_color;
+    }
+  }
+
+  // Breakdown Bars
+  const maxBarMb = Math.max(vram.total_mb, 4500);
+  const vb = vram.breakdown;
+
+  const modelMb = vb.model_weights_mb + vb.gradients_mb;
+  document.getElementById('ds-vram-model-val').textContent = `${modelMb.toFixed(1)} MB (Weights ${vb.model_weights_mb}MB + Grad ${vb.gradients_mb}MB)`;
+  document.getElementById('ds-bar-model').style.width = `${Math.min(100, (modelMb / maxBarMb) * 100)}%`;
+
+  document.getElementById('ds-vram-optim-val').textContent = `${vb.optimizer_mb.toFixed(1)} MB`;
+  document.getElementById('ds-bar-optim').style.width = `${Math.min(100, (vb.optimizer_mb / maxBarMb) * 100)}%`;
+
+  document.getElementById('ds-vram-act-val').textContent = `${vb.activations_mb.toFixed(1)} MB (${(vb.activations_mb / cfg.batch_size).toFixed(0)} MB/sample)`;
+  document.getElementById('ds-bar-act').style.width = `${Math.min(100, (vb.activations_mb / maxBarMb) * 100)}%`;
+
+  const totalOverheadMb = (vb.cuda_base_mb || 850) + (vb.system_gpu_overhead_mb || 450);
+  document.getElementById('ds-vram-cuda-val').textContent = `${totalOverheadMb.toFixed(0)} MB (CUDA ${vb.cuda_base_mb}MB + Desktop ${vb.system_gpu_overhead_mb || 450}MB)`;
+  document.getElementById('ds-bar-cuda').style.width = `${Math.min(100, (totalOverheadMb / maxBarMb) * 100)}%`;
+
+  // RAM Text
+  const rb = ram.breakdown;
+  document.getElementById('ds-ram-total-val').textContent = `${ram.total_gb} GB (Available: ${ram.sys_available_gb} GB)`;
+  document.getElementById('ds-ram-sub-text').textContent =
+    `Main Process: ${rb.main_process_ram_mb} MB | Workers (${cfg.train_workers}): ${rb.worker_process_ram_mb} MB | Dataset Cache: ${rb.dataset_cache_mb} MB`;
+
+  // Table 1: VRAM Matrix Table
+  const matrixTbody = document.getElementById('ds-vram-matrix-tbody');
+  if (matrixTbody && vram.matrix) {
+    matrixTbody.innerHTML = vram.matrix.map(row => {
+      const isCurrent = row.batch_size === cfg.batch_size;
+      const highlightClass = isCurrent ? 'style="background: #007acc18; font-weight: 600;"' : '';
+      
+      let statusLabel = '';
+      if (row.status_type === 'PERFECT') {
+        statusLabel = '<span style="color:#4ec9b0;">✔ Perfect Fit</span>';
+      } else if (row.status_type === 'TIGHT') {
+        statusLabel = '<span style="color:#dcdcaa;">⚠ Tight Fit (OOM Risk)</span>';
+      } else if (row.status_type === 'OOM') {
+        statusLabel = '<span style="color:#f14c4c; font-weight:600;">❌ Out of Memory</span>';
+      } else {
+        statusLabel = '<span style="color:#858585;">CPU Mode</span>';
+      }
+
+      let recGpu = 'RTX 3050 (4 GB)';
+      if (row.vram_gb > 16) recGpu = 'RTX 3090 / 4090 / A100 (24~40 GB)';
+      else if (row.vram_gb > 10) recGpu = 'RTX 3080 / 4070 / 4080 (12~16 GB)';
+      else if (row.vram_gb > 6) recGpu = 'RTX 3060 / 4060 (8~12 GB)';
+      else if (row.vram_gb > 3.5) recGpu = 'RTX 3060 (6~8 GB)';
+
+      return `
+        <tr ${highlightClass}>
+          <td>
+            <span style="font-family: var(--vsc-font-mono); color: #9cdcfe;">Batch ${row.batch_size}</span>
+            ${isCurrent ? '<span class="vsc-badge" style="margin-left:4px;">CURRENT</span>' : ''}
+          </td>
+          <td style="font-family: var(--vsc-font-mono); color: #4fc1ff;">${row.vram_gb} GB <span style="font-size:10px; color:#858585;">(${row.vram_mb} MB)</span></td>
+          <td style="color: #cccccc; font-size:11px;">${recGpu}</td>
+          <td>${statusLabel}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // Table 2: RAM Workers Matrix Table
+  const ramMatrixTbody = document.getElementById('ds-ram-matrix-tbody');
+  if (ramMatrixTbody && ram.workers_matrix) {
+    ramMatrixTbody.innerHTML = ram.workers_matrix.map(row => {
+      const isCurrent = row.workers === cfg.train_workers;
+      const highlightClass = isCurrent ? 'style="background: #007acc18; font-weight: 600;"' : '';
+
+      let statusLabel = '';
+      if (row.status_type === 'SAFE') {
+        statusLabel = '<span style="color:#4ec9b0;">✔ RAM Sufficient (Safe)</span>';
+      } else if (row.status_type === 'TIGHT') {
+        statusLabel = '<span style="color:#dcdcaa;">⚠ RAM Tight</span>';
+      } else {
+        statusLabel = '<span style="color:#f14c4c; font-weight:600;">❌ Insufficient RAM (OOM Risk)</span>';
+      }
+
+      return `
+        <tr ${highlightClass}>
+          <td>
+            <span style="font-family: var(--vsc-font-mono); color: #9cdcfe;">${row.workers} Worker(s)</span>
+            ${isCurrent ? '<span class="vsc-badge" style="margin-left:4px;">CURRENT</span>' : ''}
+          </td>
+          <td style="font-family: var(--vsc-font-mono); color: #dcdcaa;">${row.req_ram_gb} GB</td>
+          <td style="font-size:11px; color:#858585;">${row.req_ram_mb} MB RAM (${row.workers === 0 ? 'Main process only' : `${row.workers} parallel processes`})</td>
+          <td>${statusLabel}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+}
+
+function renderSpeciesTable() {
+  if (!currentDatasetSummaryData || !currentDatasetSummaryData.species_summary) return;
+
+  const tbody = document.getElementById('ds-species-tbody');
+  let list = [...currentDatasetSummaryData.species_summary];
+
+  // Filter
+  if (speciesFilterKeyword.trim()) {
+    const kw = speciesFilterKeyword.toLowerCase().trim();
+    list = list.filter(item => item.class_name.toLowerCase().includes(kw));
+  }
+
+  // Sort
+  list.sort((a, b) => {
+    let valA = a[speciesSortField];
+    let valB = b[speciesSortField];
+    if (typeof valA === 'string') {
+      return speciesSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    }
+    return speciesSortAsc ? (valA - valB) : (valB - valA);
+  });
+
+  // Update table header sort indicators
+  document.querySelectorAll('.sort-icon').forEach(el => el.textContent = '');
+  const activeIcon = document.getElementById(`sort-${speciesSortField}`);
+  if (activeIcon) {
+    activeIcon.textContent = speciesSortAsc ? '▲' : '▼';
+  }
+
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" class="cell-empty">No species matching the filter query.</td></tr>';
+    return;
+  }
+
+  const maxCalls = Math.max(...list.map(s => s.num_calls), 1);
+
+  tbody.innerHTML = list.map(s => {
+    const barWidth = Math.max(4, Math.round((s.num_calls / maxCalls) * 100));
+
+    return `
+      <tr>
+        <td style="font-weight: 600; color: #9cdcfe; font-family: var(--vsc-font-mono);">
+          ${s.class_name}
+        </td>
+        <td>
+          <div class="visual-bar-cell">
+            <span style="font-family: var(--vsc-font-mono); font-weight:600; color:#fff; min-width: 32px;">${s.num_calls}</span>
+            <div class="visual-bar-container">
+              <div class="visual-bar-fill" style="width: ${barWidth}%;"></div>
+            </div>
+            <span class="visual-bar-text">${s.call_percentage}%</span>
+          </div>
+        </td>
+        <td>
+          <span style="font-family: var(--vsc-font-mono); color: #cccccc;">${s.num_recordings}</span>
+          <span style="font-size: 10px; color: #858585;">(${s.recording_percentage}%)</span>
+        </td>
+        <td style="font-family: var(--vsc-font-mono); color: #89d185;">
+          ${s.total_annotated_sec}s
+        </td>
+        <td>
+          <span style="font-family: var(--vsc-font-mono); color: #dcdcaa;">${s.avg_duration_ms}</span>
+          <span style="font-size: 10px; color: #858585;" title="Min: ${s.min_duration_ms}ms, Max: ${s.max_duration_ms}ms">(${s.min_duration_ms}~${s.max_duration_ms})</span>
+        </td>
+        <td>
+          <span style="font-family: var(--vsc-font-mono); color: #4ec9b0;">${s.mean_low_freq_khz} ~ ${s.mean_high_freq_khz}</span>
+          <span style="font-size: 10px; color: #858585;" title="Extreme: ${s.min_low_freq_khz}~${s.max_high_freq_khz} kHz">kHz</span>
+        </td>
+        <td style="font-family: var(--vsc-font-mono); color: #4fc1ff;">
+          ${s.mean_bandwidth_khz} kHz
+        </td>
+        <td>
+          <span style="font-family: var(--vsc-font-mono); color: #c586c0;">${s.call_rate_per_min}</span>
+        </td>
+        <td>
+          <span class="vsc-pill-blue" style="font-size: 10px;">${s.primary_event}</span>
+        </td>
+        <td>
+          <span style="font-family: var(--vsc-font-mono); color: #858585;">${s.individuals_count}</span>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function sortSpeciesTable(field) {
+  if (speciesSortField === field) {
+    speciesSortAsc = !speciesSortAsc;
+  } else {
+    speciesSortField = field;
+    speciesSortAsc = false;
+  }
+  renderSpeciesTable();
+}
+
+function filterSpeciesTable() {
+  const input = document.getElementById('ds-species-filter');
+  speciesFilterKeyword = input ? input.value : '';
+  renderSpeciesTable();
+}
+
+function exportSpeciesSummaryCSV() {
+  if (!currentDatasetSummaryData || !currentDatasetSummaryData.species_summary) {
+    alert('No dataset summary data to export!');
+    return;
+  }
+
+  const list = currentDatasetSummaryData.species_summary;
+  const headers = [
+    'Species Class', 'Call Count', 'Call Share (%)', 'Recordings Count', 'Recordings Share (%)',
+    'Total Annotated (s)', 'Avg Duration (ms)', 'Min Duration (ms)', 'Max Duration (ms)',
+    'Mean Low Freq (kHz)', 'Mean High Freq (kHz)', 'Min Low Freq (kHz)', 'Max High Freq (kHz)',
+    'Mean Bandwidth (kHz)', 'Call Rate (calls/min)', 'Primary Event', 'Individuals Count'
+  ];
+
+  const rows = list.map(s => [
+    `"${s.class_name}"`, s.num_calls, s.call_percentage, s.num_recordings, s.recording_percentage,
+    s.total_annotated_sec, s.avg_duration_ms, s.min_duration_ms, s.max_duration_ms,
+    s.mean_low_freq_khz, s.mean_high_freq_khz, s.min_low_freq_khz, s.max_high_freq_khz,
+    s.mean_bandwidth_khz, s.call_rate_per_min, `"${s.primary_event}"`, s.individuals_count
+  ]);
+
+  const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement('a');
+  const dsName = currentDatasetSummaryData.dataset_name || 'dataset';
+  link.setAttribute('href', encodedUri);
+  link.setAttribute('download', `${dsName}_species_summary_${Date.now()}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function renderSpeciesChart(speciesList) {
+  const canvas = document.getElementById('ds-species-chart');
+  if (!canvas || !window.Chart) return;
+
+  if (dsSpeciesChart) {
+    dsSpeciesChart.destroy();
+  }
+
+  if (!speciesList || speciesList.length === 0) return;
+
+  const topSpecies = speciesList.slice(0, 8);
+  const labels = topSpecies.map(s => s.class_name);
+  const counts = topSpecies.map(s => s.num_calls);
+
+  const colors = [
+    '#007acc', '#4ec9b0', '#c586c0', '#dcdcaa', '#ce9178', '#4fc1ff', '#89d185', '#9cdcfe'
+  ];
+
+  const ctx = canvas.getContext('2d');
+  dsSpeciesChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: counts,
+        backgroundColor: colors.slice(0, labels.length),
+        borderColor: '#1e1e1e',
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            color: '#cccccc',
+            font: { family: 'Fira Code, monospace', size: 10 },
+            boxWidth: 12,
+            padding: 8,
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const val = context.raw || 0;
+              const total = counts.reduce((a, b) => a + b, 0);
+              const pct = ((val / total) * 100).toFixed(1);
+              return ` ${context.label}: ${val} calls (${pct}%)`;
+            }
+          }
+        }
+      },
+      cutout: '65%',
+    }
+  });
+}
+
+function renderSourcesTable(sources) {
+  const tbody = document.getElementById('ds-sources-tbody');
+  if (!tbody) return;
+
+  if (!sources || sources.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="cell-empty">No source directories defined.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = sources.map(s => `
+    <tr>
+      <td style="font-weight: 600; color: #9cdcfe;">${s.name}</td>
+      <td style="font-family: var(--vsc-font-mono); font-size: 11px; color: #858585;">${s.audio_dir || '--'}</td>
+      <td style="font-family: var(--vsc-font-mono); color: #cccccc;">${s.audio_count}</td>
+      <td style="font-family: var(--vsc-font-mono); color: #89d185;">${s.annotation_files_count}</td>
+      <td style="font-family: var(--vsc-font-mono); color: #4fc1ff; font-weight:600;">${s.calls_count}</td>
+    </tr>
+  `).join('');
+}
+
 

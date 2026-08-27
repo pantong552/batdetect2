@@ -649,6 +649,509 @@ async def run_prediction(
         raise HTTPException(status_code=500, detail=f"推論失敗: {str(e)}")
 
 
+
+def estimate_training_hardware(
+    num_audio_files: int,
+    total_duration_sec: float,
+    batch_size: int = 8,
+    train_workers: int = 4,
+    trainable: str = "heads",
+    precision: str = "fp16",
+    spectrogram_freq_bins: int = 256,
+    clip_duration: float = 2.0,
+) -> Dict[str, Any]:
+    """精確估算 BatDetect2 訓練時所需的 GPU VRAM (顯存) 及系統 RAM (記憶體)，並結合目前電腦即時可用記憶體診斷。"""
+    # 1. 模型參數與優化器開銷
+    total_params = 26_500_000  # 約 26.5M 參數
+    trainable_params = total_params if trainable == "full" else 3_200_000  # heads 微調約 3.2M
+
+    bytes_per_float = 2 if precision == "fp16" else 4
+
+    # 模型權重顯存 (MB)
+    model_weights_mb = round((total_params * bytes_per_float) / (1024 ** 2), 2)
+    # 梯度顯存 (MB) (反向傳播梯度通常以 fp32 累計)
+    gradients_mb = round((trainable_params * 4) / (1024 ** 2), 2)
+    # AdamW Optimizer 狀態 (momentum + variance, 8 bytes per trainable param)
+    optimizer_mb = round((trainable_params * 8) / (1024 ** 2), 2)
+
+    # 2. 前向與反向傳播激活特徵圖 (Activations Memory per batch)
+    # 在 BatDetect2 FPN + 多尺度 Detection Heads 反向傳播時需保存完整的卷積與注意力特徵圖
+    # FP32 實測每 sample 約 460MB，FP16 (AMP) 實測每 sample 約 260MB
+    act_per_sample_mb = 260.0 if precision == "fp16" else 460.0
+    activations_mb = round(batch_size * act_per_sample_mb, 2)
+
+    # 3. CUDA Context / CUDNN Workspace 與 Windows 桌面系統開銷
+    cuda_base_mb = 850.0  # CUDA runtime, Context, CuDNN Workspace, memory allocator baseline
+    system_gpu_overhead_mb = 450.0  # Windows DWM / 桌面系統渲染常駐佔用
+
+    # 總 VRAM 尖峰 (含 18% PyTorch 顯存池碎片化緩衝)
+    total_vram_mb = (model_weights_mb + gradients_mb + optimizer_mb + activations_mb + cuda_base_mb) * 1.18
+    total_vram_gb = round(total_vram_mb / 1024, 2)
+
+    # 讀取目前本機 GPU 資訊
+    cuda_available = torch.cuda.is_available()
+    gpu_name = "CPU Only (No CUDA)"
+    gpu_vram_gb = 0.0
+    usable_gpu_vram_gb = 0.0
+
+    if cuda_available and torch.cuda.device_count() > 0:
+        props = torch.cuda.get_device_properties(0)
+        gpu_name = props.name
+        gpu_vram_gb = round(props.total_memory / (1024 ** 3), 2)
+        # 扣除 Windows 系統桌面佔用 (約 0.45GB)
+        usable_gpu_vram_gb = max(0.5, round(gpu_vram_gb - (system_gpu_overhead_mb / 1024), 2))
+
+    # 產生常用 Batch Size 的 VRAM 矩陣 (1, 2, 4, 8, 16, 32, 64)
+    vram_matrix = []
+    for b in [1, 2, 4, 8, 16, 32, 64]:
+        b_act_mb = b * act_per_sample_mb
+        b_total_mb = (model_weights_mb + gradients_mb + optimizer_mb + b_act_mb + cuda_base_mb) * 1.18
+        b_vram_gb = round(b_total_mb / 1024, 2)
+
+        if gpu_vram_gb > 0:
+            if b_vram_gb <= usable_gpu_vram_gb * 0.75:
+                status_txt = "Perfect Fit"
+                status_type = "PERFECT"
+            elif b_vram_gb <= usable_gpu_vram_gb:
+                status_txt = "Tight Fit (OOM Risk)"
+                status_type = "TIGHT"
+            else:
+                status_txt = "Out of Memory"
+                status_type = "OOM"
+        else:
+            status_txt = "CPU Mode"
+            status_type = "CPU"
+
+        vram_matrix.append({
+            "batch_size": b,
+            "vram_gb": b_vram_gb,
+            "vram_mb": round(b_total_mb, 0),
+            "status_text": status_txt,
+            "status_type": status_type,
+        })
+
+    # 4. 電腦系統實體 RAM (Host RAM) 計算與即時可用性對比
+    vmem = psutil.virtual_memory()
+    sys_total_ram_gb = round(vmem.total / (1024 ** 3), 2)
+    sys_used_ram_gb = round(vmem.used / (1024 ** 3), 2)
+    sys_available_ram_gb = round(vmem.available / (1024 ** 3), 2)
+    sys_ram_percent = vmem.percent
+
+    # (a) 音訊與標註結構快取 (檔案清單、元數據與標註緩存)
+    dataset_cache_mb = min(1536, max(300, int(num_audio_files * 2.0)))
+    # (b) Windows 多進程 DataLoader Workers 開銷 (Windows spawn 模式下每個進程約 0.95GB)
+    worker_process_ram_mb = train_workers * 980
+    # (c) 主進程 Python + PyTorch + Lightning 常駐記憶體
+    main_process_ram_mb = 2200
+
+    total_req_ram_mb = dataset_cache_mb + worker_process_ram_mb + main_process_ram_mb
+    total_req_ram_gb = round(total_req_ram_mb / 1024, 2)
+
+    # 產生常用 Workers 數量的 RAM 需求矩陣 (0, 1, 2, 4, 8)
+    ram_workers_matrix = []
+    for w in [0, 1, 2, 4, 8]:
+        w_ram_mb = dataset_cache_mb + (w * 980) + main_process_ram_mb
+        w_ram_gb = round(w_ram_mb / 1024, 2)
+        
+        if sys_available_ram_gb >= w_ram_gb * 1.25:
+            w_status = "RAM Sufficient (Safe)"
+            w_status_type = "SAFE"
+        elif sys_available_ram_gb >= w_ram_gb:
+            w_status = "RAM Tight"
+            w_status_type = "TIGHT"
+        else:
+            w_status = "Insufficient RAM (OOM Risk)"
+            w_status_type = "OOM"
+
+        ram_workers_matrix.append({
+            "workers": w,
+            "req_ram_gb": w_ram_gb,
+            "req_ram_mb": w_ram_mb,
+            "status_text": w_status,
+            "status_type": w_status_type,
+        })
+
+    # 5. 綜合硬體診斷與調優建議
+    vram_advisory = {
+        "status": "UNKNOWN",
+        "status_color": "#858585",
+        "gpu_name": gpu_name,
+        "gpu_vram_gb": gpu_vram_gb,
+        "usable_gpu_vram_gb": usable_gpu_vram_gb,
+        "advice": "",
+        "recommended_batch_size": 2,
+    }
+
+    if cuda_available and gpu_vram_gb > 0:
+        if total_vram_gb <= usable_gpu_vram_gb * 0.75:
+            vram_advisory["status"] = "PERFECT"
+            vram_advisory["status_color"] = "#4ec9b0"
+            vram_advisory["advice"] = f"GPU 顯存非常充裕！此 Batch Size ({batch_size}) 可穩定全速訓練。"
+            vram_advisory["recommended_batch_size"] = batch_size
+        elif total_vram_gb <= usable_gpu_vram_gb:
+            vram_advisory["status"] = "TIGHT"
+            vram_advisory["status_color"] = "#dcdcaa"
+            vram_advisory["advice"] = f"顯存極度緊繃 (預估需 {total_vram_gb} GB，扣除系統後可用 {usable_gpu_vram_gb} GB)！在峰值階段容易爆顯存 (CUDA OOM)，建議調小 Batch Size (例如降至 {max(1, batch_size // 2)}) 或啟用 FP16。"
+            vram_advisory["recommended_batch_size"] = max(1, batch_size // 2)
+        else:
+            vram_advisory["status"] = "OOM_RISK"
+            vram_advisory["status_color"] = "#f14c4c"
+            vram_advisory["advice"] = f"【爆顯存警告】預估需要 {total_vram_gb} GB 顯存，已超過您的 GPU 實際可用顯存 ({usable_gpu_vram_gb} GB)！若直接執行訓練必然會觸發 CUDA out of memory。強烈建議將 Batch Size 降至 {max(1, 4 if usable_gpu_vram_gb >= 3.0 else 2)}！"
+            # 計算適合該 GPU 的安全最大 Batch Size
+            rec_b = 1
+            for row in vram_matrix:
+                if row["vram_gb"] <= usable_gpu_vram_gb * 0.8:
+                    rec_b = row["batch_size"]
+            vram_advisory["recommended_batch_size"] = rec_b
+    else:
+        vram_advisory["status"] = "CPU_MODE"
+        vram_advisory["status_color"] = "#858585"
+        vram_advisory["advice"] = "未偵測到獨立 CUDA GPU，訓練將依賴 CPU 與系統實體 RAM 進行。"
+        vram_advisory["recommended_batch_size"] = 4
+
+    # 系統實體 RAM 診斷
+    ram_advisory = {
+        "status": "SAFE" if sys_available_ram_gb >= total_req_ram_gb * 1.15 else ("TIGHT" if sys_available_ram_gb >= total_req_ram_gb else "OOM_RISK"),
+        "status_color": "#4ec9b0" if sys_available_ram_gb >= total_req_ram_gb * 1.15 else ("#dcdcaa" if sys_available_ram_gb >= total_req_ram_gb else "#f14c4c"),
+        "total_ram_gb": sys_total_ram_gb,
+        "used_ram_gb": sys_used_ram_gb,
+        "available_ram_gb": sys_available_ram_gb,
+        "ram_percent": sys_ram_percent,
+        "advice": f"目前系統剩餘可用 RAM: {sys_available_ram_gb} GB（總量 {sys_total_ram_gb} GB）。訓練預估需 {total_req_ram_gb} GB。" if sys_available_ram_gb >= total_req_ram_gb else f"【系統 RAM 緊張】目前系統剩餘可用 RAM 僅剩 {sys_available_ram_gb} GB，小於訓練預估所需 ({total_req_ram_gb} GB)！建議將 Workers 設為 0 或 1，並關閉其他背景軟體。"
+    }
+
+    return {
+        "vram": {
+            "total_gb": total_vram_gb,
+            "total_mb": round(total_vram_mb, 1),
+            "breakdown": {
+                "model_weights_mb": model_weights_mb,
+                "gradients_mb": gradients_mb,
+                "optimizer_mb": optimizer_mb,
+                "activations_mb": activations_mb,
+                "cuda_base_mb": cuda_base_mb,
+                "system_gpu_overhead_mb": system_gpu_overhead_mb,
+            },
+            "matrix": vram_matrix,
+        },
+        "ram": {
+            "total_gb": total_req_ram_gb,
+            "total_mb": round(total_req_ram_mb, 1),
+            "sys_total_gb": sys_total_ram_gb,
+            "sys_available_gb": sys_available_ram_gb,
+            "sys_used_gb": sys_used_ram_gb,
+            "sys_percent": sys_ram_percent,
+            "breakdown": {
+                "dataset_cache_mb": dataset_cache_mb,
+                "worker_process_ram_mb": worker_process_ram_mb,
+                "main_process_ram_mb": main_process_ram_mb,
+            },
+            "workers_matrix": ram_workers_matrix,
+        },
+        "advisory": vram_advisory,
+        "ram_advisory": ram_advisory,
+        "config_used": {
+            "batch_size": batch_size,
+            "train_workers": train_workers,
+            "trainable": trainable,
+            "precision": precision,
+        }
+    }
+
+
+@app.post("/api/dataset/summary")
+@app.get("/api/dataset/summary")
+async def get_dataset_summary(
+    dataset_path: Optional[str] = None,
+    batch_size: int = 8,
+    train_workers: int = 4,
+    trainable: str = "heads",
+    precision: str = "fp16",
+    payload: Optional[Dict[str, Any]] = None,
+):
+    """深度分析指定的 Train Dataset (YAML) 及其音訊 wav 與標註 json，並計算 VRAM/RAM 需求。"""
+    try:
+        import soundfile as sf
+        import yaml
+    except ImportError:
+        pass
+
+    if payload:
+        dataset_path = payload.get("dataset_path", dataset_path)
+        batch_size = int(payload.get("batch_size", batch_size))
+        train_workers = int(payload.get("train_workers", train_workers))
+        trainable = payload.get("trainable", trainable)
+        precision = payload.get("precision", precision)
+
+    if not dataset_path:
+        dataset_path = "Test_data/dataset.yaml"
+
+    yaml_file = (WORKSPACE_ROOT / dataset_path).resolve()
+    if not yaml_file.exists():
+        # 嘗試相對路徑
+        yaml_file = Path(dataset_path).resolve()
+        if not yaml_file.exists():
+            raise HTTPException(status_code=404, detail=f"找不到資料集配置檔: {dataset_path}")
+
+    # 讀取 YAML 配置
+    try:
+        with open(yaml_file, "r", encoding="utf-8") as f:
+            config_data = yaml.safe_load(f) or {}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"解析 YAML 失敗: {str(e)}")
+
+    dataset_name = config_data.get("name", yaml_file.stem)
+    dataset_description = config_data.get("description", "")
+    sources = config_data.get("sources", [])
+
+    audio_files_info = {}  # key: relative_path/filename -> info
+    annotations_list = []  # list of all annotations
+    annotated_audio_filenames = set()
+    samplerate_counts = {}
+    channel_counts = {}
+    total_audio_duration_sec = 0.0
+    total_audio_size_bytes = 0
+
+    sources_summary = []
+
+    # 若 YAML 中未定義 sources，嘗試自該目錄下的 audio/anns 資料夾尋找
+    if not sources:
+        base_dir = yaml_file.parent
+        audio_dir = base_dir / "audio"
+        anns_dir = base_dir / "anns"
+        if audio_dir.exists() or anns_dir.exists():
+            sources = [{
+                "name": "Default Source",
+                "audio_dir": str(audio_dir.relative_to(WORKSPACE_ROOT)).replace("\\", "/") if audio_dir.exists() else None,
+                "annotations_dir": str(anns_dir.relative_to(WORKSPACE_ROOT)).replace("\\", "/") if anns_dir.exists() else None,
+            }]
+
+    for src in sources:
+        src_name = src.get("name", "Unknown Source")
+        src_audio_dir_str = src.get("audio_dir")
+        src_anns_dir_str = src.get("annotations_dir")
+
+        src_audio_count = 0
+        src_ann_count = 0
+        src_call_count = 0
+
+        # 解析音訊目錄
+        audio_dir_path = None
+        if src_audio_dir_str:
+            audio_dir_path = (WORKSPACE_ROOT / src_audio_dir_str).resolve()
+            if not audio_dir_path.exists():
+                audio_dir_path = (yaml_file.parent / src_audio_dir_str).resolve()
+
+        if audio_dir_path and audio_dir_path.exists():
+            audio_patterns = ["**/*.wav", "**/*.WAV", "**/*.flac", "**/*.FLAC", "**/*.mp3"]
+            audio_paths = []
+            for pat in audio_patterns:
+                audio_paths.extend(audio_dir_path.glob(pat))
+
+            for ap in audio_paths:
+                rel_p = str(ap.relative_to(WORKSPACE_ROOT) if ap.is_relative_to(WORKSPACE_ROOT) else ap).replace("\\", "/")
+                file_size = ap.stat().st_size
+                total_audio_size_bytes += file_size
+                src_audio_count += 1
+
+                # 讀取音訊 Header (不載入波形數據，極快)
+                dur = 0.0
+                sr = 256000
+                ch = 1
+                try:
+                    info = sf.info(str(ap))
+                    dur = info.duration
+                    sr = info.samplerate
+                    ch = info.channels
+                except Exception:
+                    pass
+
+                total_audio_duration_sec += dur
+                samplerate_counts[str(sr)] = samplerate_counts.get(str(sr), 0) + 1
+                channel_counts[f"{ch} Channel(s)"] = channel_counts.get(f"{ch} Channel(s)", 0) + 1
+
+                audio_files_info[ap.name] = {
+                    "path": rel_p,
+                    "filename": ap.name,
+                    "duration": dur,
+                    "samplerate": sr,
+                    "channels": ch,
+                    "size_bytes": file_size,
+                    "source": src_name,
+                }
+
+        # 解析標註目錄
+        anns_dir_path = None
+        if src_anns_dir_str:
+            anns_dir_path = (WORKSPACE_ROOT / src_anns_dir_str).resolve()
+            if not anns_dir_path.exists():
+                anns_dir_path = (yaml_file.parent / src_anns_dir_str).resolve()
+
+        if anns_dir_path and anns_dir_path.exists():
+            ann_json_paths = list(anns_dir_path.glob("**/*.json"))
+            for jp in ann_json_paths:
+                src_ann_count += 1
+                try:
+                    with open(jp, "r", encoding="utf-8") as jf:
+                        ann_data = json.load(jf)
+                    
+                    is_annotated = ann_data.get("annotated", True)
+                    ann_items = ann_data.get("annotation", [])
+                    
+                    # 對應的音訊檔名 (通常為 xxx.wav.json -> xxx.wav)
+                    stem_name = jp.name
+                    if stem_name.endswith(".json"):
+                        stem_name = stem_name[:-5]
+                    
+                    if is_annotated and stem_name in audio_files_info:
+                        annotated_audio_filenames.add(stem_name)
+                    elif is_annotated:
+                        annotated_audio_filenames.add(stem_name)
+
+                    for item in ann_items:
+                        src_call_count += 1
+                        cls_name = item.get("class") or "Unknown"
+                        ev_type = item.get("event") or "Echolocation"
+                        s_time = float(item.get("start_time", 0.0))
+                        e_time = float(item.get("end_time", 0.0))
+                        l_freq = float(item.get("low_freq", 0.0))
+                        h_freq = float(item.get("high_freq", 0.0))
+                        indiv = str(item.get("individual", "0"))
+
+                        call_dur_ms = max(0.0, (e_time - s_time) * 1000.0)
+
+                        annotations_list.append({
+                            "class": cls_name,
+                            "event": ev_type,
+                            "start_time": s_time,
+                            "end_time": e_time,
+                            "duration_ms": call_dur_ms,
+                            "low_freq_khz": l_freq / 1000.0,
+                            "high_freq_khz": h_freq / 1000.0,
+                            "bandwidth_khz": max(0.0, (h_freq - l_freq) / 1000.0),
+                            "individual": indiv,
+                            "audio_filename": stem_name,
+                            "source": src_name,
+                        })
+                except Exception:
+                    pass
+
+        sources_summary.append({
+            "name": src_name,
+            "audio_dir": src_audio_dir_str,
+            "annotations_dir": src_anns_dir_str,
+            "audio_count": src_audio_count,
+            "annotation_files_count": src_ann_count,
+            "calls_count": src_call_count,
+        })
+
+    total_audio_files = len(audio_files_info)
+    total_calls = len(annotations_list)
+
+    # 4. 深度物種 (Species / Class) 統計分析
+    species_dict = {}
+    for ann in annotations_list:
+        cls_name = ann["class"]
+        if cls_name not in species_dict:
+            species_dict[cls_name] = {
+                "class_name": cls_name,
+                "calls": [],
+                "recordings": set(),
+                "events": {},
+                "individuals": set(),
+            }
+        
+        species_dict[cls_name]["calls"].append(ann)
+        species_dict[cls_name]["recordings"].add(ann["audio_filename"])
+        ev = ann["event"]
+        species_dict[cls_name]["events"][ev] = species_dict[cls_name]["events"].get(ev, 0) + 1
+        species_dict[cls_name]["individuals"].add(ann["individual"])
+
+    species_summary_table = []
+    for cls_name, data in species_dict.items():
+        calls = data["calls"]
+        num_calls = len(calls)
+        call_pct = round((num_calls / total_calls * 100), 1) if total_calls > 0 else 0.0
+        
+        durations = [c["duration_ms"] for c in calls]
+        low_freqs = [c["low_freq_khz"] for c in calls if c["low_freq_khz"] > 0]
+        high_freqs = [c["high_freq_khz"] for c in calls if c["high_freq_khz"] > 0]
+        bandwidths = [c["bandwidth_khz"] for c in calls]
+
+        # 計算該物種所在音訊檔案的累計總時長
+        species_recs_dur = sum(
+            audio_files_info[rf]["duration"] for rf in data["recordings"] if rf in audio_files_info
+        )
+        total_call_dur_sec = sum(durations) / 1000.0
+        
+        # 呼叫率 (Calls per minute of audio containing this species)
+        call_rate_per_min = round(num_calls / (species_recs_dur / 60.0), 1) if species_recs_dur > 0 else 0.0
+
+        species_summary_table.append({
+            "class_name": cls_name,
+            "num_calls": num_calls,
+            "call_percentage": call_pct,
+            "num_recordings": len(data["recordings"]),
+            "recording_percentage": round(len(data["recordings"]) / max(1, total_audio_files) * 100, 1),
+            "total_annotated_sec": round(total_call_dur_sec, 2),
+            "avg_duration_ms": round(float(np.mean(durations)), 1) if durations else 0.0,
+            "min_duration_ms": round(float(np.min(durations)), 1) if durations else 0.0,
+            "max_duration_ms": round(float(np.max(durations)), 1) if durations else 0.0,
+            "mean_low_freq_khz": round(float(np.mean(low_freqs)), 1) if low_freqs else 0.0,
+            "mean_high_freq_khz": round(float(np.mean(high_freqs)), 1) if high_freqs else 0.0,
+            "min_low_freq_khz": round(float(np.min(low_freqs)), 1) if low_freqs else 0.0,
+            "max_high_freq_khz": round(float(np.max(high_freqs)), 1) if high_freqs else 0.0,
+            "mean_bandwidth_khz": round(float(np.mean(bandwidths)), 1) if bandwidths else 0.0,
+            "call_rate_per_min": call_rate_per_min,
+            "events_breakdown": data["events"],
+            "primary_event": max(data["events"], key=data["events"].get) if data["events"] else "None",
+            "individuals_count": len(data["individuals"]),
+        })
+
+    # 依照叫聲數量由多到少排序
+    species_summary_table.sort(key=lambda x: x["num_calls"], reverse=True)
+
+    # 5. 計算 VRAM 及 RAM 需求
+    hardware_estimate = estimate_training_hardware(
+        num_audio_files=total_audio_files,
+        total_duration_sec=total_audio_duration_sec,
+        batch_size=batch_size,
+        train_workers=train_workers,
+        trainable=trainable,
+        precision=precision,
+    )
+
+    # 格式化總錄音長度字串
+    hrs = int(total_audio_duration_sec // 3600)
+    mins = int((total_audio_duration_sec % 3600) // 60)
+    secs = int(total_audio_duration_sec % 60)
+    duration_str = f"{hrs}h {mins}m {secs}s" if hrs > 0 else f"{mins}m {secs}s"
+
+    return {
+        "success": True,
+        "dataset_name": dataset_name,
+        "dataset_description": dataset_description,
+        "dataset_path": dataset_path,
+        "overview": {
+            "total_audio_files": total_audio_files,
+            "total_annotated_files": len(annotated_audio_filenames),
+            "unannotated_files": max(0, total_audio_files - len(annotated_audio_filenames)),
+            "annotation_coverage_pct": round(len(annotated_audio_filenames) / max(1, total_audio_files) * 100, 1),
+            "total_duration_sec": round(total_audio_duration_sec, 2),
+            "total_duration_formatted": duration_str,
+            "total_size_mb": round(total_audio_size_bytes / (1024 ** 2), 2),
+            "total_size_gb": round(total_audio_size_bytes / (1024 ** 3), 2),
+            "total_calls": total_calls,
+            "num_species": len(species_summary_table),
+            "samplerate_distribution": samplerate_counts,
+            "channel_distribution": channel_counts,
+            "sources": sources_summary,
+        },
+        "species_summary": species_summary_table,
+        "hardware_estimate": hardware_estimate,
+    }
+
+
 @app.websocket("/ws/train")
 async def websocket_train_endpoint(websocket: WebSocket):
     """即時串流訓練日誌與指標的 WebSocket 端點。"""
