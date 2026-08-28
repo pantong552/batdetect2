@@ -574,6 +574,7 @@ async function startTraining() {
   }
 
   const { audio_config, preprocess_config } = getPreprocessingConfigPayload();
+  const bottleneck_attention = document.getElementById('bottleneck-attention-select')?.value || 'TimeFreqRelativeSelfAttention';
 
   const payload = {
     train_dataset,
@@ -581,6 +582,7 @@ async function startTraining() {
     targets_config: targets_config || null,
     model_path: model_path || null,
     trainable: trainable || 'heads',
+    bottleneck_attention: bottleneck_attention,
     num_epochs,
     train_workers,
     val_workers,

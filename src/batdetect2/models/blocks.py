@@ -71,9 +71,11 @@ __all__ = [
     "StandardConvUpBlock",
     "SelfAttention",
     "EfficientSelfAttention",
+    "TimeFreqRelativeSelfAttention",
     "VerticalMean",
     "ConvConfig",
     "EfficientSelfAttentionConfig",
+    "TimeFreqRelativeSelfAttentionConfig",
     "FreqCoordConvDownConfig",
     "StandardConvDownConfig",
     "FreqCoordConvUpConfig",
@@ -428,6 +430,197 @@ class EfficientSelfAttention(Block):
             in_channels=input_channels,
             attention_channels=config.attention_channels,
             temperature=config.temperature,
+        )
+
+
+class TimeFreqRelativeSelfAttentionConfig(BaseConfig):
+    """Configuration for a ``TimeFreqRelativeSelfAttention`` block.
+
+    Attributes
+    ----------
+    name : str
+        Discriminator field; always ``"TimeFreqRelativeSelfAttention"``.
+    attention_channels : int
+        Dimensionality of the query, key, and value projections.
+    freq_feat_channels : int
+        Dimensionality of the estimated per-step frequency feature representation.
+        Defaults to ``16``.
+    temperature : float
+        Divisor applied together with ``attention_channels`` when scaling
+        dot-product attention logits. Defaults to ``1.0``.
+    max_relative_distance : int
+        Maximum relative time distance considered for bucketing/clipping relative
+        time bias. Defaults to ``128``.
+    """
+
+    name: Literal["TimeFreqRelativeSelfAttention"] = "TimeFreqRelativeSelfAttention"
+    attention_channels: int
+    freq_feat_channels: int = 16
+    temperature: float = 1.0
+    max_relative_distance: int = 128
+
+
+class TimeFreqRelativeSelfAttention(Block):
+    """Self-attention block with 2D relative time-frequency attention bias.
+
+    Applies self-attention across the time steps while injecting a continuous 2D
+    relative bias matrix that captures:
+    1. Temporal intervals: relative time delta :math:`\\Delta t_{ij} = i - j`.
+    2. Frequency dynamics: relative frequency feature shift :math:`\\Delta f_{ij} = f_i - f_j`,
+       derived from learned frequency representations at each time step.
+
+    The combined 2D relative bias :math:`B_{ij}` is computed via a compact MLP and
+    added to the attention logits before the softmax operation in SDPA.
+
+    Parameters
+    ----------
+    in_channels : int
+        Number of input channels (features per time step).
+    attention_channels : int
+        Dimensionality of query, key, and value projections.
+    freq_feat_channels : int, default=16
+        Dimension of intermediate per-frame frequency feature representation.
+    temperature : float, default=1.0
+        Temperature scaling factor for attention scores.
+    max_relative_distance : int, default=128
+        Maximum relative time steps to normalize/encode relative time distance.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        attention_channels: int,
+        freq_feat_channels: int = 16,
+        temperature: float = 1.0,
+        max_relative_distance: int = 128,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = in_channels
+        self.temperature = temperature
+        self.att_dim = attention_channels
+        self.output_channels = in_channels
+        self.freq_feat_channels = freq_feat_channels
+        self.max_relative_distance = max_relative_distance
+
+        # QKV Projections
+        self.qkv_proj = nn.Linear(in_channels, 3 * attention_channels)
+        self.pro_fun = nn.Linear(attention_channels, in_channels)
+
+        # Frequency feature projection: maps frame representation to frequency space
+        self.freq_extractor = nn.Sequential(
+            nn.Linear(in_channels, freq_feat_channels),
+            nn.LayerNorm(freq_feat_channels),
+            nn.GELU(),
+        )
+
+        # Relative 2D Time-Frequency Bias MLP:
+        # Input features:
+        # - normalized time delta: (i - j) / max_relative_distance (1 dim)
+        # - sign/direction of time delta (1 dim)
+        # - relative frequency feature difference: f_i - f_j (freq_feat_channels dim)
+        mlp_in_dim = 2 + freq_feat_channels
+        self.bias_mlp = nn.Sequential(
+            nn.Linear(mlp_in_dim, attention_channels // 4 if attention_channels >= 16 else 16),
+            nn.GELU(),
+            nn.Linear(attention_channels // 4 if attention_channels >= 16 else 16, 1),
+        )
+
+        self.scale_factor = 1.0 / (self.temperature * self.att_dim)
+
+    def _compute_relative_bias(self, x: torch.Tensor) -> torch.Tensor:
+        """Compute the (B, W, W) relative time-frequency attention bias.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of shape ``(B, W, C)``.
+
+        Returns
+        -------
+        torch.Tensor
+            Bias tensor of shape ``(B, W, W)``.
+        """
+        B, W, _ = x.shape
+        device = x.device
+
+        # 1. Temporal relative matrix: shape (1, W, W, 2)
+        pos = torch.arange(W, device=device, dtype=torch.float32)
+        delta_t = pos.unsqueeze(1) - pos.unsqueeze(0)  # (W, W): i - j
+        norm_delta_t = torch.clamp(
+            delta_t / float(self.max_relative_distance), min=-1.0, max=1.0
+        ).unsqueeze(-1)  # (W, W, 1)
+        sign_delta_t = torch.sign(delta_t).unsqueeze(-1)  # (W, W, 1)
+
+        time_rel = torch.cat([norm_delta_t, sign_delta_t], dim=-1)  # (W, W, 2)
+        time_rel = time_rel.unsqueeze(0).expand(B, -1, -1, -1)  # (B, W, W, 2)
+
+        # 2. Frequency relative shift matrix: shape (B, W, W, freq_feat_channels)
+        freq_feats = self.freq_extractor(x)  # (B, W, freq_feat_channels)
+        # Delta freq = freq_i - freq_j
+        delta_f = freq_feats.unsqueeze(2) - freq_feats.unsqueeze(1)  # (B, W, W, freq_feat_channels)
+
+        # 3. Concatenate and pass through MLP
+        tf_input = torch.cat([time_rel, delta_f], dim=-1)  # (B, W, W, 2 + freq_feat_channels)
+        bias = self.bias_mlp(tf_input).squeeze(-1)  # (B, W, W)
+
+        return bias
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply self-attention with 2D relative time-frequency bias."""
+        x = x.squeeze(2).permute(0, 2, 1)  # (B, W, C)
+
+        # Single projection pass for Q, K, V
+        qkv = self.qkv_proj(x)
+        query, key, value = torch.chunk(qkv, 3, dim=-1)
+
+        # Compute 2D relative time-frequency bias
+        rel_bias = self._compute_relative_bias(x)  # (B, W, W)
+
+        # Apply scaled dot product attention with relative bias mask
+        att = F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=rel_bias,
+            dropout_p=0.0,
+            is_causal=False,
+            scale=self.scale_factor,
+        )
+
+        op = self.pro_fun(att)
+        return op.permute(0, 2, 1).unsqueeze(2)
+
+    def compute_attention_weights(self, x: torch.Tensor) -> torch.Tensor:
+        """Return the softmax attention weight matrix including 2D relative bias."""
+        x = x.squeeze(2).permute(0, 2, 1)  # (B, W, C)
+
+        qkv = self.qkv_proj(x)
+        query, key, _ = torch.chunk(qkv, 3, dim=-1)
+
+        rel_bias = self._compute_relative_bias(x)
+
+        # Compute raw logits + bias
+        # key: (B, W, D), query: (B, W, D) -> bmm: (B, W, W)
+        kk_qq = torch.bmm(key, query.permute(0, 2, 1)) * self.scale_factor
+        logits = kk_qq + rel_bias
+        att_weights = F.softmax(logits, dim=1)
+
+        return att_weights
+
+    @block_registry.register(TimeFreqRelativeSelfAttentionConfig)
+    @staticmethod
+    def from_config(
+        config: TimeFreqRelativeSelfAttentionConfig,
+        input_channels: int,
+        input_height: int,
+    ) -> "TimeFreqRelativeSelfAttention":
+        return TimeFreqRelativeSelfAttention(
+            in_channels=input_channels,
+            attention_channels=config.attention_channels,
+            freq_feat_channels=config.freq_feat_channels,
+            temperature=config.temperature,
+            max_relative_distance=config.max_relative_distance,
         )
 
 
@@ -1169,6 +1362,7 @@ LayerConfig = Annotated[
     | StandardConvUpConfig
     | SelfAttentionConfig
     | EfficientSelfAttentionConfig
+    | TimeFreqRelativeSelfAttentionConfig
     | VerticalConvConfig
     | VerticalMeanConfig
     | LayerGroupConfig,

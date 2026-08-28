@@ -3,6 +3,8 @@ import torch
 from batdetect2.models.blocks import (
     SelfAttention,
     SelfAttentionConfig,
+    TimeFreqRelativeSelfAttention,
+    TimeFreqRelativeSelfAttentionConfig,
     VerticalMeanConfig,
 )
 from batdetect2.models.bottleneck import (
@@ -53,3 +55,33 @@ def test_bottleneck_default_frequency_aggregation_matches_channels() -> None:
     output = bottleneck(torch.randn(2, 64, 8, 10))
 
     assert output.shape == (2, bottleneck.out_channels, 8, 10)
+
+
+def test_bottleneck_with_time_freq_relative_self_attention() -> None:
+    """Bottleneck can successfully instantiate and run TimeFreqRelativeSelfAttention."""
+    config = BottleneckConfig(
+        channels=128,
+        layers=[
+            TimeFreqRelativeSelfAttentionConfig(
+                attention_channels=64,
+                freq_feat_channels=16,
+            )
+        ],
+    )
+
+    bottleneck = build_bottleneck(
+        input_height=8,
+        in_channels=64,
+        config=config,
+    )
+
+    assert isinstance(bottleneck, Bottleneck)
+    attention = bottleneck.layers[0]
+    assert isinstance(attention, TimeFreqRelativeSelfAttention)
+    assert attention.in_channels == 128
+
+    dummy_in = torch.randn(2, 64, 8, 20)
+    output = bottleneck(dummy_in)
+
+    assert output.shape == (2, 128, 8, 20)
+

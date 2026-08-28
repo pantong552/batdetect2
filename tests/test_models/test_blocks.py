@@ -18,6 +18,8 @@ from batdetect2.models.blocks import (
     StandardConvDownConfig,
     StandardConvUpBlock,
     StandardConvUpConfig,
+    TimeFreqRelativeSelfAttention,
+    TimeFreqRelativeSelfAttentionConfig,
     VerticalConv,
     VerticalConvConfig,
     VerticalMean,
@@ -221,6 +223,10 @@ def test_efficient_self_attention_matches_self_attention_with_copied_weights(
             EfficientSelfAttentionConfig(attention_channels=32),
             EfficientSelfAttention,
         ),
+        (
+            TimeFreqRelativeSelfAttentionConfig(attention_channels=32),
+            TimeFreqRelativeSelfAttention,
+        ),
         (VerticalConvConfig(channels=32), VerticalConv),
         (VerticalMeanConfig(channels=32), VerticalMean),
     ],
@@ -270,3 +276,37 @@ def test_layer_group_from_config_and_forward(dummy_input):
 
     # Shape should reflect: Conv (stays 32x32) -> DownConv (halves to 16x16)
     assert output.shape == (2, 64, 16, 16)
+
+
+def test_time_freq_relative_self_attention_forward_and_backward(
+    dummy_bottleneck_input,
+):
+    """Test that TimeFreqRelativeSelfAttention runs forward and backward smoothly."""
+    in_channels = dummy_bottleneck_input.size(1)
+    attention_channels = 32
+
+    block = TimeFreqRelativeSelfAttention(
+        in_channels=in_channels,
+        attention_channels=attention_channels,
+        freq_feat_channels=16,
+    )
+
+    x = dummy_bottleneck_input.clone().requires_grad_(True)
+    out = block(x)
+
+    assert out.shape == dummy_bottleneck_input.shape
+    loss = out.sum()
+    loss.backward()
+    assert x.grad is not None
+    assert x.grad.shape == dummy_bottleneck_input.shape
+
+    weights = block.compute_attention_weights(dummy_bottleneck_input)
+    # Weights should be (B, W, W)
+    batch_size, _, _, width = dummy_bottleneck_input.shape
+    assert weights.shape == (batch_size, width, width)
+    # Softmax rows should sum to 1
+    torch.testing.assert_close(
+        weights.sum(dim=1),
+        torch.ones(batch_size, width),
+    )
+

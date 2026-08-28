@@ -129,6 +129,7 @@ async def start_training(payload: Dict[str, Any]):
     experiment_name = payload.get("experiment_name", "batdetect2_studio")
     run_name = payload.get("run_name")
     trainable = payload.get("trainable", "heads")
+    bottleneck_attention = payload.get("bottleneck_attention", "TimeFreqRelativeSelfAttention")
     audio_config = payload.get("audio_config")
     preprocess_config = payload.get("preprocess_config")
     training_config = payload.get("training_config")
@@ -145,6 +146,7 @@ async def start_training(payload: Dict[str, Any]):
         experiment_name=experiment_name,
         run_name=run_name,
         trainable=trainable,
+        bottleneck_attention=bottleneck_attention,
         audio_config=audio_config,
         preprocess_config=preprocess_config,
         training_config=training_config,

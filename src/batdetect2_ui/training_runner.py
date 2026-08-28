@@ -93,6 +93,7 @@ class TrainingManager:
         experiment_name: Optional[str] = None,
         run_name: Optional[str] = None,
         trainable: Optional[str] = "heads",
+        bottleneck_attention: Optional[str] = "TimeFreqRelativeSelfAttention",
         audio_config: Optional[Dict[str, Any]] = None,
         preprocess_config: Optional[Dict[str, Any]] = None,
         training_config: Optional[Dict[str, Any]] = None,
@@ -120,6 +121,7 @@ class TrainingManager:
             "targets_config": targets_config,
             "model_path": model_path,
             "trainable": trainable if is_finetune else None,
+            "bottleneck_attention": bottleneck_attention,
             "num_epochs": num_epochs,
             "train_workers": train_workers,
             "val_workers": val_workers,
@@ -182,7 +184,7 @@ class TrainingManager:
         if run_name:
             cmd.extend(["--run-name", run_name.strip()])
 
-        # If audio_config or preprocess_config or training_config is provided, create configs
+        # If audio_config or preprocess_config or training_config or bottleneck_attention is provided, create configs
         config_gen_dir = self.workspace_root / "outputs" / "generated_configs"
         config_gen_dir.mkdir(parents=True, exist_ok=True)
 
@@ -193,7 +195,7 @@ class TrainingManager:
                 yaml.dump(audio_config, f, default_flow_style=False)
             cmd.extend(["--audio-config", str(audio_yaml_path.relative_to(self.workspace_root)).replace("\\", "/")])
 
-        if preprocess_config and not (model_path and model_path.strip()):
+        if (preprocess_config or bottleneck_attention) and not (model_path and model_path.strip()):
             import yaml
             # Load default base model.yaml or construct full ModelConfig
             base_model_yaml = self.workspace_root / "example_data" / "configs" / "model.yaml"
@@ -205,7 +207,42 @@ class TrainingManager:
             # Override samplerate and preprocess section
             if audio_config and "samplerate" in audio_config:
                 model_dict["samplerate"] = audio_config["samplerate"]
-            model_dict["preprocess"] = preprocess_config
+            if preprocess_config:
+                model_dict["preprocess"] = preprocess_config
+
+            # Override bottleneck attention layers if specified
+            if bottleneck_attention:
+                if "architecture" not in model_dict:
+                    model_dict["architecture"] = {}
+                if "bottleneck" not in model_dict["architecture"]:
+                    model_dict["architecture"]["bottleneck"] = {"channels": 256, "layers": []}
+
+                bottleneck_channels = model_dict["architecture"]["bottleneck"].get("channels", 256)
+
+                if bottleneck_attention == "TimeFreqRelativeSelfAttention":
+                    model_dict["architecture"]["bottleneck"]["layers"] = [
+                        {
+                            "name": "TimeFreqRelativeSelfAttention",
+                            "attention_channels": bottleneck_channels,
+                            "freq_feat_channels": 16,
+                        }
+                    ]
+                elif bottleneck_attention == "EfficientSelfAttention":
+                    model_dict["architecture"]["bottleneck"]["layers"] = [
+                        {
+                            "name": "EfficientSelfAttention",
+                            "attention_channels": bottleneck_channels,
+                        }
+                    ]
+                elif bottleneck_attention == "SelfAttention":
+                    model_dict["architecture"]["bottleneck"]["layers"] = [
+                        {
+                            "name": "SelfAttention",
+                            "attention_channels": bottleneck_channels,
+                        }
+                    ]
+                elif bottleneck_attention == "none":
+                    model_dict["architecture"]["bottleneck"]["layers"] = []
 
             model_yaml_path = config_gen_dir / "model_config.yaml"
             with open(model_yaml_path, "w", encoding="utf-8") as f:

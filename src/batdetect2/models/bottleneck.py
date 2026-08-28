@@ -29,6 +29,7 @@ from batdetect2.models.blocks import (
     Block,
     EfficientSelfAttentionConfig,
     SelfAttentionConfig,
+    TimeFreqRelativeSelfAttentionConfig,
     VerticalConv,
     VerticalConvConfig,
     VerticalMean,
@@ -168,7 +169,9 @@ class Bottleneck(Block):
 
 
 BottleneckLayerConfig = Annotated[
-    SelfAttentionConfig | EfficientSelfAttentionConfig,
+    SelfAttentionConfig
+    | EfficientSelfAttentionConfig
+    | TimeFreqRelativeSelfAttentionConfig,
     Field(discriminator="name"),
 ]
 """Type alias for the discriminated union of block configs usable in the Bottleneck."""

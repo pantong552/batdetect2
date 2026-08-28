@@ -159,6 +159,18 @@
               </select>
             </div>
 
+            <div class="form-row" id="bottleneck-attention-row">
+              <label for="bottleneck-attention-select">
+                <span>Bottleneck Attention Mechanism</span>
+              </label>
+              <select id="bottleneck-attention-select" class="vsc-select">
+                <option value="TimeFreqRelativeSelfAttention" selected>TimeFreqRelativeSelfAttention (2D Time-Frequency Bias / Lowest Freq)</option>
+                <option value="EfficientSelfAttention">EfficientSelfAttention (Standard SDPA)</option>
+                <option value="SelfAttention">SelfAttention (Original Standard)</option>
+                <option value="none">None (No Attention Layers in Bottleneck)</option>
+              </select>
+            </div>
+
             <div class="form-row">
               <label for="experiment-name-input">
                 <span>Experiment Name</span>

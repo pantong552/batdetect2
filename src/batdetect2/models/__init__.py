@@ -44,6 +44,7 @@ from batdetect2.models.blocks import (
     FreqCoordConvUpConfig,
     StandardConvDownConfig,
     StandardConvUpConfig,
+    TimeFreqRelativeSelfAttentionConfig,
 )
 from batdetect2.models.bottleneck import (
     Bottleneck,
@@ -90,6 +91,7 @@ __all__ = [
     "FreqCoordConvUpConfig",
     "StandardConvDownConfig",
     "StandardConvUpConfig",
+    "TimeFreqRelativeSelfAttentionConfig",
     "build_backbone",
     "build_bottleneck",
     "build_decoder",
