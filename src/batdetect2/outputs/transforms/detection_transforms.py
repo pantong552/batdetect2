@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from soundevent.geometry import compute_bounds, shift_geometry
 
 from batdetect2.core import (
@@ -98,6 +98,66 @@ class FilterByFrequency:
         )
 
 
+class FrequencyRangeConfig(BaseConfig):
+    min: float = Field(ge=0)
+    max: float = Field(ge=0)
+
+    @model_validator(mode="after")
+    def validate_range(self) -> "FrequencyRangeConfig":
+        if self.max < self.min:
+            raise ValueError("Frequency range max must be >= min.")
+        return self
+
+
+class ClassFrequencyRangeConfig(BaseConfig):
+    low_freq: FrequencyRangeConfig
+    high_freq: FrequencyRangeConfig
+
+
+class MaskClassesByFrequencyConfig(BaseConfig):
+    """Frequency limits for class-specific inference masking."""
+
+    name: Literal["mask_classes_by_frequency"] = "mask_classes_by_frequency"
+    class_ranges: dict[str, ClassFrequencyRangeConfig]
+
+
+class MaskClassesByFrequency:
+    def __init__(
+        self,
+        class_names: Sequence[str],
+        class_ranges: dict[str, ClassFrequencyRangeConfig],
+    ):
+        unknown_classes = set(class_ranges).difference(class_names)
+        if unknown_classes:
+            raise ValueError(
+                "Unknown classes in frequency mask: "
+                f"{sorted(unknown_classes)}. Expected class names: "
+                f"{list(class_names)}."
+            )
+
+        self.class_names = list(class_names)
+        self.class_ranges = class_ranges
+
+    def __call__(self, detection: Detection) -> Detection:
+        _, low_freq, _, high_freq = compute_bounds(detection.geometry)
+        class_scores = detection.class_scores.copy()
+
+        for index, class_name in enumerate(self.class_names):
+            bounds = self.class_ranges.get(class_name)
+            if bounds is None:
+                continue
+
+            low_freq_range = bounds.low_freq
+            high_freq_range = bounds.high_freq
+            if not (
+                low_freq_range.min <= low_freq <= low_freq_range.max
+                and high_freq_range.min <= high_freq <= high_freq_range.max
+            ):
+                class_scores[index] = 0
+
+        return replace(detection, class_scores=class_scores)
+
+
 class FilterByDurationConfig(BaseConfig):
     """Configuration for `FilterByDuration`.
 
@@ -150,6 +210,7 @@ class FilterByDuration:
 DetectionTransformConfig = Annotated[
     DetectionTransformImportConfig
     | FilterByFrequencyConfig
+    | MaskClassesByFrequencyConfig
     | FilterByDurationConfig,
     Field(discriminator="name"),
 ]

@@ -317,9 +317,13 @@ class BatDetect2Formatter(OutputFormatterProtocol[FileAnnotation]):
             prediction.geometry
         )
 
-        top_class_index = int(np.argmax(prediction.class_scores))
-        top_class_score = float(prediction.class_scores[top_class_index])
-        top_class = self.get_class_name(top_class_index)
+        if prediction.class_scores.size and prediction.class_scores.max() > 0:
+            top_class_index = int(np.argmax(prediction.class_scores))
+            top_class_score = float(prediction.class_scores[top_class_index])
+            top_class = self.get_class_name(top_class_index)
+        else:
+            top_class_score = 0.0
+            top_class = "Unknown"
         annotation: Annotation = {
             "start_time": round(float(start_time), 4),
             "end_time": round(float(end_time), 4),

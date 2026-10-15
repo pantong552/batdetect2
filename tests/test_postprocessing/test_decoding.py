@@ -617,3 +617,12 @@ def test_get_class_tags_empty(dummy_targets):
         targets=dummy_targets,
     )
     assert len(predicted_tags) == 0
+
+
+def test_get_class_tags_omits_all_masked_classes(dummy_targets):
+    predicted_tags = get_class_tags(
+        class_scores=np.zeros(len(dummy_targets.class_names)),
+        targets=dummy_targets,
+        threshold=None,
+    )
+    assert predicted_tags == []

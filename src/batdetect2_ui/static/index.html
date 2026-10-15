@@ -869,6 +869,14 @@
               </div>
             </div>
 
+            <div class="form-row">
+              <label for="infer-frequency-ranges">
+                <span>Per-class Frequency Ranges (Optional JSON, Hz)</span>
+              </label>
+              <textarea id="infer-frequency-ranges" class="vsc-textarea" rows="7" spellcheck="false" placeholder='{"nycpla":{"low_freq":{"min":18920,"max":22000},"high_freq":{"min":19000,"max":25650}}}'></textarea>
+              <small class="vsc-hint">Both call boundaries must fit the configured class ranges. Classes omitted here remain unrestricted. Requires a .ckpt model.</small>
+            </div>
+
             <div class="action-footer" style="margin-top: 12px;">
               <button id="btn-run-inference" class="vsc-btn vsc-btn-primary vsc-btn-block" onclick="runInference()">
                 <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
@@ -1206,6 +1214,7 @@
           </div>
           <div class="table-toolbar">
             <input type="text" id="ds-species-filter" class="vsc-input vsc-input-sm" placeholder="Filter species name..." oninput="filterSpeciesTable()">
+            <button class="vsc-btn vsc-btn-primary vsc-btn-xs" onclick="generateClassMask()">Generate Class Mask</button>
             <button class="vsc-btn vsc-btn-outline vsc-btn-xs" onclick="exportSpeciesSummaryCSV()">Export CSV</button>
           </div>
         </div>
@@ -1220,7 +1229,8 @@
                   <th onclick="sortSpeciesTable('num_recordings')" class="sortable-th">Recordings <span class="sort-icon" id="sort-num_recordings"></span></th>
                   <th onclick="sortSpeciesTable('total_annotated_sec')" class="sortable-th">Annotated Time <span class="sort-icon" id="sort-total_annotated_sec"></span></th>
                   <th onclick="sortSpeciesTable('avg_duration_ms')" class="sortable-th">Avg Duration (ms) <span class="sort-icon" id="sort-avg_duration_ms"></span></th>
-                  <th onclick="sortSpeciesTable('mean_low_freq_khz')" class="sortable-th">Freq Range (Mean Low~High kHz) <span class="sort-icon" id="sort-mean_low_freq_khz"></span></th>
+                  <th onclick="sortSpeciesTable('min_low_freq_khz')" class="sortable-th">Low Frequency Range (kHz) <span class="sort-icon" id="sort-min_low_freq_khz"></span></th>
+                  <th onclick="sortSpeciesTable('min_high_freq_khz')" class="sortable-th">High Frequency Range (kHz) <span class="sort-icon" id="sort-min_high_freq_khz"></span></th>
                   <th onclick="sortSpeciesTable('mean_bandwidth_khz')" class="sortable-th">Mean Bandwidth (kHz) <span class="sort-icon" id="sort-mean_bandwidth_khz"></span></th>
                   <th onclick="sortSpeciesTable('call_rate_per_min')" class="sortable-th">Call Rate (calls/min) <span class="sort-icon" id="sort-call_rate_per_min"></span></th>
                   <th>Primary Event</th>
@@ -1228,7 +1238,7 @@
                 </tr>
               </thead>
               <tbody id="ds-species-tbody">
-                <tr><td colspan="10" class="cell-empty">Click "Analyze Dataset" to inspect annotations and recordings</td></tr>
+                <tr><td colspan="11" class="cell-empty">Click "Analyze Dataset" to inspect annotations and recordings</td></tr>
               </tbody>
             </table>
           </div>

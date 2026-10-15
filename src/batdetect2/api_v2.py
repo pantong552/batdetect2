@@ -589,6 +589,12 @@ class BatDetect2API:
 
         import numpy as np
 
+        if (
+            detection.class_scores.size == 0
+            or detection.class_scores.max() <= 0
+        ):
+            return "Unknown"
+
         top_index = int(np.argmax(detection.class_scores))
         return self.targets.class_names[top_index]
 

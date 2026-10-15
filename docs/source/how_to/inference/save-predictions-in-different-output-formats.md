@@ -42,9 +42,24 @@ format:
   include_features: true
   include_geometry: true
 transform:
-  detection_transforms: []
+  detection_transforms:
+    - name: mask_classes_by_frequency
+      class_ranges:
+        nycpla:
+          low_freq:
+            min: 18920
+            max: 22000
+          high_freq:
+            min: 19000
+            max: 25650
   clip_transforms: []
 ```
+
+This optional inference transform masks a class if either predicted frequency
+boundary falls outside its configured range. The model then selects the
+highest-scoring eligible class. Classes omitted from `class_ranges` remain
+unrestricted. If no class is eligible, the detection is retained without a
+species label. This does not require retraining.
 
 Run with:
 

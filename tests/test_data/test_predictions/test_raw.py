@@ -160,3 +160,30 @@ def test_roundtrip_loads_with_multiprocessing(
     assert {item.clip.uuid for item in recovered} == {
         item.clip.uuid for item in predictions
     }
+
+
+def test_roundtrip_unclassified_detection_without_class_scores(
+    clip: data.Clip,
+    sample_targets: TargetProtocol,
+    tmp_path: Path,
+):
+    formatter = build_output_formatter(
+        config=RawOutputConfig(include_class_scores=False),
+        targets=sample_targets,
+    )
+    detection = Detection(
+        geometry=data.BoundingBox(coordinates=[0.1, 20_000, 0.2, 25_000]),
+        detection_score=0.5,
+        class_scores=np.zeros(len(sample_targets.class_names)),
+        features=np.zeros(1),
+    )
+    prediction = ClipDetections(clip=clip, detections=[detection])
+
+    path = tmp_path / "unclassified"
+    formatter.save(predictions=[prediction], path=path)
+    recovered = formatter.load(path=path)
+
+    np.testing.assert_array_equal(
+        recovered[0].detections[0].class_scores,
+        np.zeros(len(sample_targets.class_names)),
+    )

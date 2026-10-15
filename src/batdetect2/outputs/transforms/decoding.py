@@ -149,6 +149,9 @@ def get_class_tags(
         class_scores,
         targets.class_names,
     ):
+        if score <= 0:
+            continue
+
         if threshold is not None and score < threshold:
             continue
 

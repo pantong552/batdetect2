@@ -13,6 +13,8 @@ from batdetect2.outputs.transforms.clip_transforms import (
 from batdetect2.outputs.transforms.decoding import to_detections
 from batdetect2.outputs.transforms.detection_transforms import (
     DetectionTransformConfig,
+    MaskClassesByFrequency,
+    MaskClassesByFrequencyConfig,
     shift_detections_to_start_time,
 )
 from batdetect2.outputs.transforms.detection_transforms import (
@@ -33,6 +35,7 @@ from batdetect2.targets.types import ROIMapperProtocol, TargetProtocol
 __all__ = [
     "ClipDetectionsTransformConfig",
     "DetectionTransformConfig",
+    "MaskClassesByFrequencyConfig",
     "OutputTransform",
     "OutputTransformConfig",
     "build_output_transform",
@@ -170,13 +173,24 @@ def build_output_transform(
     targets = targets or build_targets()
     roi_mapper = roi_mapper or build_roi_mapping()
 
+    detection_steps = []
+    for transform_config in config.detection_transforms:
+        if isinstance(transform_config, MaskClassesByFrequencyConfig):
+            detection_steps.append(
+                MaskClassesByFrequency(
+                    class_names=targets.class_names,
+                    class_ranges=transform_config.class_ranges,
+                )
+            )
+        else:
+            detection_steps.append(
+                detection_transform_registry.build(transform_config)
+            )
+
     return OutputTransform(
         targets=targets,
         roi_mapper=roi_mapper,
-        detection_transform_steps=[
-            detection_transform_registry.build(transform_config)
-            for transform_config in config.detection_transforms
-        ],
+        detection_transform_steps=detection_steps,
         clip_transform_steps=[
             clip_transform_registry.build(transform_config)
             for transform_config in config.clip_transforms

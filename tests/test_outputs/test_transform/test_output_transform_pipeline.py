@@ -95,7 +95,7 @@ def test_pipeline_keeps_detection_when_all_filters_pass(
         time=0.3,
         duration=0.1,
         frequency=60_000,
-        bandwidth=1_000,
+        bandwidth=1_000 / 859.375,
     )
 
     prediction = transform.to_clip_detections(raw, clip=clip)
@@ -103,6 +103,86 @@ def test_pipeline_keeps_detection_when_all_filters_pass(
     assert len(prediction.detections) == 1
     start_time, _, _, _ = compute_bounds(prediction.detections[0].geometry)
     assert np.isclose(start_time, 10.3)
+
+
+def test_class_frequency_mask_reranks_to_a_compatible_class(
+    clip: data.Clip,
+    sample_targets: TargetProtocol,
+) -> None:
+    transform = build_output_transform(
+        targets=sample_targets,
+        config={
+            "detection_transforms": [
+                {
+                    "name": "mask_classes_by_frequency",
+                    "class_ranges": {
+                        "pippip": {
+                            "low_freq": {"min": 59_000, "max": 61_000},
+                            "high_freq": {"min": 62_000, "max": 63_000},
+                        },
+                        "myomyo": {
+                            "low_freq": {"min": 59_000, "max": 61_000},
+                            "high_freq": {"min": 60_000, "max": 62_000},
+                        },
+                    },
+                }
+            ]
+        },
+    )
+
+    raw = _mock_clip_detections_tensor(
+        time=0.3,
+        duration=0.1,
+        frequency=60_000,
+        bandwidth=1_000 / 859.375,
+    )
+    prediction = transform.to_clip_detections(raw, clip=clip)
+
+    assert len(prediction.detections) == 1
+    np.testing.assert_allclose(
+        prediction.detections[0].class_scores,
+        [0.0, 0.2],
+    )
+
+
+def test_class_frequency_mask_leaves_no_species_when_all_classes_fail(
+    clip: data.Clip,
+    sample_targets: TargetProtocol,
+) -> None:
+    transform = build_output_transform(
+        targets=sample_targets,
+        config={
+            "detection_transforms": [
+                {
+                    "name": "mask_classes_by_frequency",
+                    "class_ranges": {
+                        "pippip": {
+                            "low_freq": {"min": 65_000, "max": 70_000},
+                            "high_freq": {"min": 66_000, "max": 71_000},
+                        },
+                        "myomyo": {
+                            "low_freq": {"min": 65_000, "max": 70_000},
+                            "high_freq": {"min": 66_000, "max": 71_000},
+                        },
+                    },
+                }
+            ]
+        },
+    )
+
+    raw = _mock_clip_detections_tensor(
+        time=0.3,
+        duration=0.1,
+        frequency=60_000,
+        bandwidth=1_000,
+    )
+    prediction = transform.to_clip_detections(raw, clip=clip)
+
+    assert len(prediction.detections) == 1
+    np.testing.assert_array_equal(
+        prediction.detections[0].class_scores,
+        [0.0, 0.0],
+    )
 
 
 def test_remove_above_nyquist_uses_clip_recording_metadata(

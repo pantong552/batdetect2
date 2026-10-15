@@ -5,11 +5,13 @@ import lightning as L
 import numpy as np
 import pytest
 import torch
+from soundevent import data
 from soundevent.geometry import compute_bounds
 
 from batdetect2.api_v2 import BatDetect2API
 from batdetect2.inference import InferenceConfig
 from batdetect2.models.detectors import Detector
+from batdetect2.postprocess.types import Detection
 from batdetect2.targets import TargetConfig
 from batdetect2.train import TrainingConfig, load_model_from_checkpoint
 from batdetect2.train.lightning import build_training_module
@@ -69,6 +71,19 @@ def test_process_file_returns_recording_level_predictions(
         assert detection.class_scores.shape[0] == len(
             api_v2.targets.class_names
         )
+
+
+def test_get_top_class_name_returns_unknown_when_all_classes_are_masked():
+    api = object.__new__(BatDetect2API)
+    api.targets = type("TargetsStub", (), {"class_names": ["pippip"]})()
+    detection = Detection(
+        geometry=data.BoundingBox(coordinates=[0, 0, 1, 1]),
+        detection_score=0.5,
+        class_scores=np.zeros(1),
+        features=np.zeros(0),
+    )
+
+    assert api.get_top_class_name(detection) == "Unknown"
 
 
 @pytest.mark.slow

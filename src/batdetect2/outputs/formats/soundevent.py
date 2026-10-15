@@ -103,6 +103,9 @@ class SoundEventOutputFormatter(OutputFormatterProtocol[data.ClipPrediction]):
         for ind in sorted_indices[:top_k]:
             score = float(prediction.class_scores[ind])
 
+            if score <= 0:
+                break
+
             if self.min_score is not None and score < self.min_score:
                 break
 

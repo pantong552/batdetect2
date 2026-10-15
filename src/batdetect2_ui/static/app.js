@@ -980,6 +980,7 @@ async function runInference() {
   const modelPath = document.getElementById('infer-model-select')?.value || '';
   const threshold = document.getElementById('infer-threshold-slider').value;
   const maxDuration = document.getElementById('infer-duration-slider').value;
+  const frequencyRanges = document.getElementById('infer-frequency-ranges').value.trim();
 
   const btn = document.getElementById('btn-run-inference');
   btn.disabled = true;
@@ -996,6 +997,9 @@ async function runInference() {
   }
   formData.append('detection_threshold', threshold);
   formData.append('max_duration', maxDuration);
+  if (frequencyRanges) {
+    formData.append('class_frequency_ranges', frequencyRanges);
+  }
 
   try {
     const res = await fetch('/api/predict', {
@@ -1750,6 +1754,7 @@ async function runDatasetAnalysis() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         dataset_path: dsPath,
+        targets_path: (document.getElementById('targets-input')?.value || 'Test_data/targets.yaml').trim(),
         batch_size: batchSize,
         train_workers: workers,
         trainable: trainable,
@@ -1798,6 +1803,7 @@ async function recalculateHardwareOnly() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         dataset_path: dsPath,
+        targets_path: (document.getElementById('targets-input')?.value || 'Test_data/targets.yaml').trim(),
         batch_size: batchSize,
         train_workers: workers,
         trainable: trainable,
@@ -2062,7 +2068,7 @@ function renderSpeciesTable() {
   }
 
   if (list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" class="cell-empty">No species matching the filter query.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="cell-empty">No species matching the filter query.</td></tr>';
     return;
   }
 
@@ -2089,9 +2095,8 @@ function renderSpeciesTable() {
           <td style="color: #858585; font-size:11px;">
             N/A (Non-bat)
           </td>
-          <td style="color: #858585; font-size:11px;">
-            N/A (All Freqs)
-          </td>
+          <td style="color: #858585; font-size:11px;">N/A</td>
+          <td style="color: #858585; font-size:11px;">N/A</td>
           <td style="color: #858585; font-size:11px;">
             N/A
           </td>
@@ -2135,9 +2140,11 @@ function renderSpeciesTable() {
           <span style="font-family: var(--vsc-font-mono); color: #dcdcaa;">${s.avg_duration_ms}</span>
           <span style="font-size: 10px; color: #858585;" title="Min: ${s.min_duration_ms}ms, Max: ${s.max_duration_ms}ms">(${s.min_duration_ms}~${s.max_duration_ms})</span>
         </td>
-        <td>
-          <span style="font-family: var(--vsc-font-mono); color: #4ec9b0;">${s.mean_low_freq_khz} ~ ${s.mean_high_freq_khz}</span>
-          <span style="font-size: 10px; color: #858585;" title="Extreme: ${s.min_low_freq_khz}~${s.max_high_freq_khz} kHz">kHz</span>
+        <td style="font-family: var(--vsc-font-mono); color: #4ec9b0;">
+          ${s.min_low_freq_khz ?? 'N/A'} ~ ${s.max_low_freq_khz ?? 'N/A'} kHz
+        </td>
+        <td style="font-family: var(--vsc-font-mono); color: #4ec9b0;">
+          ${s.min_high_freq_khz ?? 'N/A'} ~ ${s.max_high_freq_khz ?? 'N/A'} kHz
         </td>
         <td style="font-family: var(--vsc-font-mono); color: #4fc1ff;">
           ${s.mean_bandwidth_khz} kHz
@@ -2182,14 +2189,14 @@ function exportSpeciesSummaryCSV() {
   const headers = [
     'Species Class', 'Call Count', 'Call Share (%)', 'Recordings Count', 'Recordings Share (%)',
     'Total Annotated (s)', 'Avg Duration (ms)', 'Min Duration (ms)', 'Max Duration (ms)',
-    'Mean Low Freq (kHz)', 'Mean High Freq (kHz)', 'Min Low Freq (kHz)', 'Max High Freq (kHz)',
+    'Min Low Freq (kHz)', 'Max Low Freq (kHz)', 'Min High Freq (kHz)', 'Max High Freq (kHz)',
     'Mean Bandwidth (kHz)', 'Call Rate (calls/min)', 'Primary Event', 'Individuals Count'
   ];
 
   const rows = list.map(s => [
     `"${s.class_name}"`, s.num_calls, s.call_percentage, s.num_recordings, s.recording_percentage,
     s.total_annotated_sec, s.avg_duration_ms, s.min_duration_ms, s.max_duration_ms,
-    s.mean_low_freq_khz, s.mean_high_freq_khz, s.min_low_freq_khz, s.max_high_freq_khz,
+    s.min_low_freq_khz, s.max_low_freq_khz, s.min_high_freq_khz, s.max_high_freq_khz,
     s.mean_bandwidth_khz, s.call_rate_per_min, `"${s.primary_event}"`, s.individuals_count
   ]);
 
@@ -2202,6 +2209,54 @@ function exportSpeciesSummaryCSV() {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+async function generateClassMask() {
+  if (!currentDatasetSummaryData?.species_summary?.length) {
+    alert('Analyze a dataset first to calculate class frequency ranges.');
+    return;
+  }
+
+  const button = document.querySelector(
+    '.table-toolbar button[onclick="generateClassMask()"]'
+  );
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Generating...';
+  }
+
+  try {
+    const response = await fetch('/api/outputs/class-mask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        species_summary: currentDatasetSummaryData.species_summary,
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.detail || 'Failed to generate class mask.');
+    }
+
+    const rangesInput = document.getElementById('infer-frequency-ranges');
+    rangesInput.value = JSON.stringify(result.class_frequency_ranges, null, 2);
+
+    const unmapped = result.unmapped_classes || [];
+    const warning = unmapped.length
+      ? `\n\nSkipped classes without matching target labels or frequency data: ${unmapped.join(', ')}`
+      : '';
+    alert(
+      `Class mask generated and applied to Quick inference.\nSaved: ${result.outputs_path}${warning}`
+    );
+  } catch (error) {
+    console.error('Generate class mask error:', error);
+    alert(`Failed to generate class mask: ${error.message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Generate Class Mask';
+    }
+  }
 }
 
 function renderSpeciesChart(speciesList) {
@@ -2282,5 +2337,3 @@ function renderSourcesTable(sources) {
     </tr>
   `).join('');
 }
-
-

@@ -415,6 +415,32 @@ body.vscode-theme {
   opacity: 0.6;
 }
 
+.vsc-textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 8px;
+  resize: vertical;
+  background: var(--vsc-bg-input);
+  border: 1px solid var(--vsc-border);
+  border-radius: var(--radius-xs);
+  color: var(--vsc-text-bright);
+  font-family: var(--vsc-font-mono);
+  font-size: 11px;
+  outline: none;
+}
+
+.vsc-textarea:focus {
+  border-color: var(--vsc-border-focus);
+}
+
+.vsc-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--vsc-text-dim);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .input-group {
   display: flex;
   gap: 4px;
@@ -1077,5 +1103,4 @@ body.vscode-theme {
   font-size: 10.5px;
   color: var(--vsc-text-muted);
 }
-
 

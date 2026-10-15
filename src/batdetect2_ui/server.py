@@ -446,10 +446,34 @@ async def run_prediction(
     detection_threshold: float = Form(0.3),
     max_duration: float = Form(3.0),
     time_expansion: float = Form(1.0),
+    class_frequency_ranges: Optional[str] = Form(None),
 ):
     """執行模型推論並回傳時頻圖影像與標註清單。"""
     import batdetect2.api as api
     import batdetect2.plotting.legacy.plot as plot
+
+    frequency_ranges = None
+    if class_frequency_ranges and class_frequency_ranges.strip():
+        try:
+            frequency_ranges = json.loads(class_frequency_ranges)
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Class frequency ranges must be valid JSON: {e.msg}.",
+            ) from e
+        if not isinstance(frequency_ranges, dict):
+            raise HTTPException(
+                status_code=400,
+                detail="Class frequency ranges must be a JSON object.",
+            )
+        if not (model_path and model_path.strip().endswith(".ckpt")):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Class frequency masking is supported for .ckpt models "
+                    "only."
+                ),
+            )
 
     target_audio_path = None
     audio_stream_rel_path = None
@@ -503,8 +527,27 @@ async def run_prediction(
         if model_path and model_path.strip() and model_path.strip().endswith(".ckpt"):
             # 使用 BatDetect2API V2 原生推論管線
             from batdetect2.api_v2 import BatDetect2API
+            from batdetect2.outputs import OutputsConfig
+
             full_ckpt_path = str((WORKSPACE_ROOT / model_path.strip()).resolve()) if not Path(model_path.strip()).is_absolute() else model_path.strip()
-            v2_api = BatDetect2API.from_checkpoint(full_ckpt_path)
+            outputs_config = None
+            if frequency_ranges is not None:
+                outputs_config = OutputsConfig.model_validate(
+                    {
+                        "transform": {
+                            "detection_transforms": [
+                                {
+                                    "name": "mask_classes_by_frequency",
+                                    "class_ranges": frequency_ranges,
+                                }
+                            ]
+                        }
+                    }
+                )
+            v2_api = BatDetect2API.from_checkpoint(
+                full_ckpt_path,
+                outputs_config=outputs_config,
+            )
             
             # 執行推論
             clip_res = v2_api.process_file(target_audio_path, detection_threshold=detection_threshold)
@@ -647,6 +690,8 @@ async def run_prediction(
             "audio_duration": round(len(audio) / run_config["target_samp_rate"], 2),
             "audio_stream_path": audio_stream_rel_path,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"推論失敗: {str(e)}")
 
@@ -865,6 +910,7 @@ def estimate_training_hardware(
 @app.get("/api/dataset/summary")
 async def get_dataset_summary(
     dataset_path: Optional[str] = None,
+    targets_path: Optional[str] = None,
     batch_size: int = 8,
     train_workers: int = 4,
     trainable: str = "heads",
@@ -880,6 +926,7 @@ async def get_dataset_summary(
 
     if payload:
         dataset_path = payload.get("dataset_path", dataset_path)
+        targets_path = payload.get("targets_path", targets_path)
         batch_size = int(payload.get("batch_size", batch_size))
         train_workers = int(payload.get("train_workers", train_workers))
         trainable = payload.get("trainable", trainable)
@@ -905,6 +952,43 @@ async def get_dataset_summary(
     dataset_name = config_data.get("name", yaml_file.stem)
     dataset_description = config_data.get("description", "")
     sources = config_data.get("sources", [])
+
+    if not targets_path:
+        targets_path = "Test_data/targets.yaml"
+    targets_file = (WORKSPACE_ROOT / targets_path).resolve()
+    if not targets_file.exists():
+        targets_file = (yaml_file.parent / targets_path).resolve()
+
+    class_name_by_annotation = {}
+    if targets_file.exists():
+        try:
+            with open(targets_file, "r", encoding="utf-8") as f:
+                targets_data = yaml.safe_load(f) or {}
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"解析 targets YAML 失敗: {e}",
+            ) from e
+
+        def collect_class_tags(value):
+            if isinstance(value, dict):
+                if value.get("key") == "class" and value.get("value"):
+                    yield str(value["value"])
+                for child in value.values():
+                    yield from collect_class_tags(child)
+            elif isinstance(value, list):
+                for child in value:
+                    yield from collect_class_tags(child)
+
+        for target in targets_data.get("classification_targets", []):
+            target_name = target.get("name")
+            if not target_name:
+                continue
+            for annotation_class in collect_class_tags(target):
+                class_name_by_annotation.setdefault(
+                    annotation_class,
+                    target_name,
+                )
 
     audio_files_info = {}  # key: relative_path/filename -> info
     annotations_list = []  # list of all annotations
@@ -1028,6 +1112,8 @@ async def get_dataset_summary(
                             "start_time": s_time,
                             "end_time": e_time,
                             "duration_ms": call_dur_ms,
+                            "low_freq_hz": l_freq,
+                            "high_freq_hz": h_freq,
                             "low_freq_khz": l_freq / 1000.0,
                             "high_freq_khz": h_freq / 1000.0,
                             "bandwidth_khz": max(0.0, (h_freq - l_freq) / 1000.0),
@@ -1093,6 +1179,8 @@ async def get_dataset_summary(
         durations = [c["duration_ms"] for c in calls]
         low_freqs = [c["low_freq_khz"] for c in calls if c["low_freq_khz"] > 0]
         high_freqs = [c["high_freq_khz"] for c in calls if c["high_freq_khz"] > 0]
+        low_freqs_hz = [c["low_freq_hz"] for c in calls if c["low_freq_hz"] > 0]
+        high_freqs_hz = [c["high_freq_hz"] for c in calls if c["high_freq_hz"] > 0]
         bandwidths = [c["bandwidth_khz"] for c in calls]
 
         # 計算該物種所在音訊檔案的累計總時長
@@ -1106,6 +1194,7 @@ async def get_dataset_summary(
 
         species_summary_table.append({
             "class_name": cls_name,
+            "target_class_name": class_name_by_annotation.get(cls_name),
             "is_negative": False,
             "num_calls": num_calls,
             "call_percentage": call_pct,
@@ -1115,10 +1204,18 @@ async def get_dataset_summary(
             "avg_duration_ms": round(float(np.mean(durations)), 1) if durations else 0.0,
             "min_duration_ms": round(float(np.min(durations)), 1) if durations else 0.0,
             "max_duration_ms": round(float(np.max(durations)), 1) if durations else 0.0,
-            "mean_low_freq_khz": round(float(np.mean(low_freqs)), 1) if low_freqs else 0.0,
-            "mean_high_freq_khz": round(float(np.mean(high_freqs)), 1) if high_freqs else 0.0,
-            "min_low_freq_khz": round(float(np.min(low_freqs)), 1) if low_freqs else 0.0,
-            "max_high_freq_khz": round(float(np.max(high_freqs)), 1) if high_freqs else 0.0,
+            "min_low_freq_khz": round(float(np.min(low_freqs)), 1) if low_freqs else None,
+            "max_low_freq_khz": round(float(np.max(low_freqs)), 1) if low_freqs else None,
+            "min_high_freq_khz": round(float(np.min(high_freqs)), 1) if high_freqs else None,
+            "max_high_freq_khz": round(float(np.max(high_freqs)), 1) if high_freqs else None,
+            "low_freq_range_hz": [
+                float(np.min(low_freqs_hz)),
+                float(np.max(low_freqs_hz)),
+            ] if low_freqs_hz else None,
+            "high_freq_range_hz": [
+                float(np.min(high_freqs_hz)),
+                float(np.max(high_freqs_hz)),
+            ] if high_freqs_hz else None,
             "mean_bandwidth_khz": round(float(np.mean(bandwidths)), 1) if bandwidths else 0.0,
             "call_rate_per_min": call_rate_per_min,
             "events_breakdown": data["events"],
@@ -1142,10 +1239,13 @@ async def get_dataset_summary(
             "avg_duration_ms": 0.0,
             "min_duration_ms": 0.0,
             "max_duration_ms": 0.0,
-            "mean_low_freq_khz": 0.0,
-            "mean_high_freq_khz": 0.0,
-            "min_low_freq_khz": 0.0,
-            "max_high_freq_khz": 0.0,
+            "target_class_name": None,
+            "min_low_freq_khz": None,
+            "max_low_freq_khz": None,
+            "min_high_freq_khz": None,
+            "max_high_freq_khz": None,
+            "low_freq_range_hz": None,
+            "high_freq_range_hz": None,
             "mean_bandwidth_khz": 0.0,
             "call_rate_per_min": 0.0,
             "events_breakdown": {"Negative Sample": total_noise_files},
@@ -1199,6 +1299,88 @@ async def get_dataset_summary(
         },
         "species_summary": species_summary_table,
         "hardware_estimate": hardware_estimate,
+    }
+
+
+@app.post("/api/outputs/class-mask")
+async def generate_class_mask_outputs(payload: Dict[str, Any]):
+    """Write inference outputs config from dataset-derived class ranges."""
+    import yaml
+
+    species_summary = payload.get("species_summary")
+    if not isinstance(species_summary, list):
+        raise HTTPException(
+            status_code=400,
+            detail="Analyze a dataset before generating a class mask.",
+        )
+
+    class_ranges = {}
+    unmapped_classes = []
+    for species in species_summary:
+        if species.get("is_negative"):
+            continue
+
+        annotation_name = str(species.get("class_name", ""))
+        target_name = species.get("target_class_name")
+        low_range = species.get("low_freq_range_hz")
+        high_range = species.get("high_freq_range_hz")
+
+        if not target_name or not low_range or not high_range:
+            if annotation_name:
+                unmapped_classes.append(annotation_name)
+            continue
+
+        class_ranges[str(target_name)] = {
+            "low_freq": {
+                "min": float(low_range[0]),
+                "max": float(low_range[1]),
+            },
+            "high_freq": {
+                "min": float(high_range[0]),
+                "max": float(high_range[1]),
+            },
+        }
+
+    if not class_ranges:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No class frequency ranges could be generated. Verify that "
+                "targets YAML class tags match the dataset annotations."
+            ),
+        )
+
+    outputs_config = {
+        "transform": {
+            "detection_transforms": [
+                {
+                    "name": "mask_classes_by_frequency",
+                    "class_ranges": class_ranges,
+                }
+            ],
+            "clip_transforms": [],
+        }
+    }
+    from batdetect2.outputs import OutputsConfig
+
+    OutputsConfig.model_validate(outputs_config)
+    output_path = WORKSPACE_ROOT / "outputs" / "class_mask_outputs.yaml"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    yaml_content = yaml.safe_dump(
+        outputs_config,
+        sort_keys=False,
+        allow_unicode=True,
+    )
+    output_path.write_text(yaml_content, encoding="utf-8")
+
+    return {
+        "success": True,
+        "outputs_path": str(output_path.relative_to(WORKSPACE_ROOT)).replace(
+            "\\", "/"
+        ),
+        "yaml_content": yaml_content,
+        "class_frequency_ranges": class_ranges,
+        "unmapped_classes": unmapped_classes,
     }
 
 

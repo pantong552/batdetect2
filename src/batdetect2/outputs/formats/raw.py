@@ -148,9 +148,13 @@ class RawFormatter(OutputFormatterProtocol[ClipDetections]):
 
             values["geometry"].append(pred.geometry.model_dump_json())
 
-            top_class_index = int(np.argmax(pred.class_scores))
-            top_class_score = float(pred.class_scores[top_class_index])
-            top_class = self.targets.class_names[top_class_index]
+            if pred.class_scores.size and pred.class_scores.max() > 0:
+                top_class_index = int(np.argmax(pred.class_scores))
+                top_class_score = float(pred.class_scores[top_class_index])
+                top_class = self.targets.class_names[top_class_index]
+            else:
+                top_class_score = 0.0
+                top_class = "Unknown"
 
             values["top_class"].append(top_class)
             values["top_class_score"].append(top_class_score)
@@ -268,8 +272,9 @@ class RawFormatter(OutputFormatterProtocol[ClipDetections]):
                 class_score = class_scores[index]
             else:
                 class_score = np.zeros(num_classes)
-                class_index = class_map[top_class[index]]
-                class_score[class_index] = top_class_scores[index]
+                class_index = class_map.get(str(top_class[index]))
+                if class_index is not None:
+                    class_score[class_index] = top_class_scores[index]
 
             feats = features[index] if features is not None else np.zeros(0)
 
