@@ -42,6 +42,10 @@ classification_targets:
     tags:
       - key: class
         value: Tylonycteris fulvida
+  - name: minmag
+    tags:
+      - key: class
+        value: Miniopterus magnater       
 
 roi:
   default:

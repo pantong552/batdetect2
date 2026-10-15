@@ -44,6 +44,12 @@ sources:
     audio_dir: Test_data/audio/CN   
  
   - format: batdetect2
+    name: GBW Species Data
+    description: GBW recordings and annotations
+    annotations_dir: Test_data/anns/GBW
+    audio_dir: Test_data/audio/GBW   
+ 
+  - format: batdetect2
     name: Background Noise
     audio_dir: Test_data/audio/Noise
     annotations_dir: Test_data/anns/Noise
