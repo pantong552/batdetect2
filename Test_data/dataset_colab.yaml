@@ -1,0 +1,55 @@
+name: test dataset
+description: Test dataset categorized into species subfolders on Colab
+sources:
+  - format: batdetect2
+    name: HLB Species Data
+    description: HLB recordings and annotations
+    annotations_dir: /content/batdetect2_dataset/anns/HLB
+    audio_dir: /content/batdetect2_dataset/audio/HLB
+
+  - format: batdetect2
+    name: HM Species Data
+    description: HM recordings and annotations
+    annotations_dir: /content/batdetect2_dataset/anns/HM
+    audio_dir: /content/batdetect2_dataset/audio/HM
+
+  - format: batdetect2
+    name: LBB Species Data
+    description: LBB recordings and annotations
+    annotations_dir: /content/batdetect2_dataset/anns/LBB
+    audio_dir: /content/batdetect2_dataset/audio/LBB
+
+  - format: batdetect2
+    name: JP Species Data
+    description: JP recordings and annotations
+    annotations_dir: /content/batdetect2_dataset/anns/JP
+    audio_dir: /content/batdetect2_dataset/audio/JP
+
+  - format: batdetect2
+    name: LP Species Data
+    description: LP recordings and annotations
+    annotations_dir: /content/batdetect2_dataset/anns/LP
+    audio_dir: /content/batdetect2_dataset/audio/LP
+
+  - format: batdetect2
+    name: CP Species Data
+    description: CP recordings and annotations
+    annotations_dir: /content/batdetect2_dataset/anns/CP
+    audio_dir: /content/batdetect2_dataset/audio/CP
+
+  - format: batdetect2
+    name: CN Species Data
+    description: CN recordings and annotations
+    annotations_dir: /content/batdetect2_dataset/anns/CN
+    audio_dir: /content/batdetect2_dataset/audio/CN
+
+  - format: batdetect2
+    name: GBW Species Data
+    description: GBW recordings and annotations
+    annotations_dir: /content/batdetect2_dataset/anns/GBW
+    audio_dir: /content/batdetect2_dataset/audio/GBW
+
+  - format: batdetect2
+    name: Background Noise
+    annotations_dir: /content/batdetect2_dataset/anns/Noise
+    audio_dir: /content/batdetect2_dataset/audio/Noise
