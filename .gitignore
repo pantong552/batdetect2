@@ -113,6 +113,7 @@ notebooks/lightning_logs
 
 # DO Include
 !batdetect2_notebook.ipynb
+!batdetect2_ui_colab.ipynb
 !src/batdetect2/models/checkpoints/*.pth.tar
 !tests/data/*.wav
 !notebooks/*.ipynb
