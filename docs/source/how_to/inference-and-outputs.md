@@ -12,4 +12,5 @@ inference/run-batch-predictions
 inference/tune-inference-clipping
 inference/tune-detection-threshold
 inference/save-predictions-in-different-output-formats
+inference/integrate-class-frequency-masking
 ```
