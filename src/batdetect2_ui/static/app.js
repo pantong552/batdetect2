@@ -366,15 +366,26 @@ function clearTerminalLogs() {
 }
 
 // Preprocessing Pipeline Helper & Real-time Calculations
-function updateSTFTCalculations() {
-  const samplerate = parseInt(document.getElementById('spec-samplerate').value) || 256000;
-  const winDuration = parseFloat(document.getElementById('spec-win-duration').value) || 0.002;
+function updateSTFTCalculations(source = 'duration') {
+  const samplerate = parseInt(document.getElementById('spec-samplerate').value) || 384000;
+  const winDurationInput = document.getElementById('spec-win-duration');
+  const nfftInput = document.getElementById('spec-n-fft');
+  let winDuration = parseFloat(winDurationInput.value) || 0.002;
+  let n_fft = parseInt(nfftInput.value) || Math.floor(samplerate * winDuration);
+
+  if (source === 'nfft') {
+    n_fft = Math.max(1, n_fft);
+    winDuration = (n_fft + 1e-6) / samplerate;
+    winDurationInput.value = winDuration.toPrecision(15);
+  } else {
+    n_fft = Math.max(1, Math.floor(samplerate * winDuration));
+  }
+
+  nfftInput.value = n_fft;
   const winOverlap = parseFloat(document.getElementById('spec-win-overlap').value) || 0.75;
 
-  const n_fft = Math.floor(samplerate * winDuration);
   const hop_length = Math.floor(n_fft * (1.0 - winOverlap));
 
-  document.getElementById('spec-win-dur-display').textContent = `${winDuration}s (n_fft=${n_fft})`;
   document.getElementById('spec-win-overlap-display').textContent = `${Math.round(winOverlap * 100)}% (hop=${hop_length})`;
 }
 
