@@ -558,6 +558,17 @@ body.vscode-theme {
   color: var(--vsc-text-bright);
 }
 
+.vsc-btn-colab {
+  background: linear-gradient(115deg, #b45309 0%, #c2410c 100%);
+  color: #ffffff;
+  border: 1px solid #f9ab00;
+}
+
+.vsc-btn-colab:hover:not(:disabled) {
+  background: linear-gradient(115deg, #c2410c 0%, #9a3412 100%);
+  border-color: #fbbc04;
+}
+
 .vsc-btn-danger {
   background: rgba(241, 76, 76, 0.2);
   color: var(--vsc-red);
@@ -1103,4 +1114,3 @@ body.vscode-theme {
   font-size: 10.5px;
   color: var(--vsc-text-muted);
 }
-

@@ -11,7 +11,7 @@
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Main Stylesheet (VS Code Dark Charcoal Theme) -->
-  <link rel="stylesheet" href="style.css?v=20260827_4">
+  <link rel="stylesheet" href="style.css?v=20261018_1">
 </head>
 <body class="vscode-theme">
   <!-- Title Bar -->
@@ -23,7 +23,7 @@
           <circle cx="9" cy="9" r="1" fill="currentColor" />
           <circle cx="15" cy="9" r="1" fill="currentColor" />
         </svg>
-        <span class="brand-title">BatDetect2 <span class="brand-badge">STUDIO</span></span>
+        <span class="brand-title">Bat AI Training <span class="brand-badge">STUDIO</span></span>
       </div>
 
       <!-- Tab Strip (VS Code Editor Tabs) -->
@@ -60,7 +60,7 @@
             <line x1="16" y1="17" x2="8" y2="17"></line>
             <polyline points="10 9 9 9 8 9"></polyline>
           </svg>
-          <span>Experiment Logs (CSV & Hparams)</span>
+          <span>Logs</span>
         </button>
         <button class="editor-tab" data-tab="dataset-summary-tab" id="tab-btn-dataset-summary">
           <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -111,6 +111,7 @@
                 <input type="text" id="train-dataset-input" class="vsc-input" value="Test_data/dataset.yaml" placeholder="Test_data/dataset.yaml">
                 <button class="vsc-btn vsc-btn-primary vsc-btn-xs" onclick="setPreset('train-dataset-input', 'Test_data/dataset.yaml')">Test_data</button>
                 <button class="vsc-btn vsc-btn-secondary vsc-btn-xs" onclick="setPreset('train-dataset-input', 'example_data/dataset.yaml')">Example</button>
+                <button class="vsc-btn vsc-btn-colab vsc-btn-xs" onclick="setPreset('train-dataset-input', '/content/batdetect2/dataset_colab.yaml')">Colab</button>
               </div>
             </div>
 
@@ -122,6 +123,7 @@
                 <input type="text" id="val-dataset-input" class="vsc-input" value="Test_data/dataset.yaml" placeholder="Test_data/dataset.yaml">
                 <button class="vsc-btn vsc-btn-primary vsc-btn-xs" onclick="setPreset('val-dataset-input', 'Test_data/dataset.yaml')">Test_data</button>
                 <button class="vsc-btn vsc-btn-secondary vsc-btn-xs" onclick="setPreset('val-dataset-input', 'example_data/dataset.yaml')">Example</button>
+                <button class="vsc-btn vsc-btn-colab vsc-btn-xs" onclick="setPreset('val-dataset-input', '/content/batdetect2/dataset_colab.yaml')">Colab</button>
               </div>
             </div>
 
@@ -133,6 +135,7 @@
                 <input type="text" id="targets-input" class="vsc-input" value="Test_data/targets.yaml" placeholder="Test_data/targets.yaml">
                 <button class="vsc-btn vsc-btn-primary vsc-btn-xs" onclick="setPreset('targets-input', 'Test_data/targets.yaml')">Test_data</button>
                 <button class="vsc-btn vsc-btn-secondary vsc-btn-xs" onclick="setPreset('targets-input', 'example_data/targets.yaml')">Example</button>
+                <button class="vsc-btn vsc-btn-colab vsc-btn-xs" onclick="setPreset('targets-input', '/content/batdetect2/targets.yaml')">Colab</button>
               </div>
             </div>
 
