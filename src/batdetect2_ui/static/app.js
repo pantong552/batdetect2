@@ -7,6 +7,15 @@ let currentDetections = [];
 let selectedAudioFile = null;
 let currentMetricsHistory = [];
 let isLogScale = false;
+let liveMetricsRefreshInProgress = false;
+
+function apiUrl(path) {
+  const baseUrl = new URL(document.baseURI);
+  if (!baseUrl.pathname.endsWith('/')) {
+    baseUrl.pathname += '/';
+  }
+  return new URL(path.replace(/^\/+/, ''), baseUrl).toString();
+}
 
 // ANSI to HTML Parser
 function ansiToHtml(text) {
@@ -39,6 +48,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initPresetsAndExamples();
   initChart();
   initWebSocket();
+  refreshLiveMetricsData();
+  setInterval(refreshLiveMetricsData, 5000);
   initDropZone();
   loadCheckpoints();
   loadExperimentsList();
@@ -93,7 +104,7 @@ function switchTab(tabId) {
 // System Hardware Info
 async function initSystemInfo() {
   try {
-    const res = await fetch('/api/system-info');
+    const res = await fetch(apiUrl('/api/system-info'));
     const data = await res.json();
     const label = document.getElementById('device-label');
 
@@ -112,7 +123,7 @@ async function initSystemInfo() {
 // Presets & Examples
 async function initPresetsAndExamples() {
   try {
-    const res = await fetch('/api/examples');
+    const res = await fetch(apiUrl('/api/examples'));
     const examples = await res.json();
     const select = document.getElementById('example-audio-select');
     select.innerHTML = '<option value="">-- Choose Example Audio --</option>';
@@ -199,8 +210,8 @@ function applyPresetMode(mode) {
 
 // WebSocket Management
 function initWebSocket() {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}/ws/train`;
+  const wsUrl = new URL(apiUrl('/ws/train'));
+  wsUrl.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   
   ws = new WebSocket(wsUrl);
 
@@ -606,7 +617,7 @@ async function startTraining() {
 
   try {
     document.getElementById('btn-start-training').disabled = true;
-    const res = await fetch('/api/train/start', {
+    const res = await fetch(apiUrl('/api/train/start'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -625,7 +636,7 @@ async function startTraining() {
 async function stopTraining() {
   if (!confirm('Are you sure you want to stop the current training task?')) return;
   try {
-    const res = await fetch('/api/train/stop', { method: 'POST' });
+    const res = await fetch(apiUrl('/api/train/stop'), { method: 'POST' });
     const data = await res.json();
     console.log('[Studio] Stop response:', data);
   } catch (err) {
@@ -742,7 +753,7 @@ function toggleLogScale() {
 async function loadCheckpoints() {
   const tbody = document.getElementById('checkpoints-tbody');
   try {
-    const res = await fetch('/api/checkpoints');
+    const res = await fetch(apiUrl('/api/checkpoints'));
     const list = await res.json();
     if (!list || list.length === 0) {
       tbody.innerHTML = '<tr><td colspan="6" class="cell-empty">No checkpoints found in outputs/checkpoints/</td></tr>';
@@ -786,7 +797,7 @@ async function exportCheckpointToONNX(path, btnEl) {
   }
 
   try {
-    const res = await fetch('/api/checkpoints/export-onnx', {
+    const res = await fetch(apiUrl('/api/checkpoints/export-onnx'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path }),
@@ -813,7 +824,7 @@ async function loadExportedModels() {
   if (!tbody) return;
 
   try {
-    const res = await fetch('/api/models');
+    const res = await fetch(apiUrl('/api/models'));
     const list = await res.json();
     if (!list || list.length === 0) {
       tbody.innerHTML = '<tr><td colspan="7" class="cell-empty">No exported models found in outputs/models/</td></tr>';
@@ -855,7 +866,7 @@ async function deleteExportedModel(path) {
     return;
   }
   try {
-    const res = await fetch(`/api/models?path=${encodeURIComponent(path)}`, {
+    const res = await fetch(apiUrl(`/api/models?path=${encodeURIComponent(path)}`), {
       method: 'DELETE',
     });
     const data = await res.json();
@@ -908,7 +919,7 @@ async function deleteCheckpoint(path) {
     return;
   }
   try {
-    const res = await fetch(`/api/checkpoints?path=${encodeURIComponent(path)}`, {
+    const res = await fetch(apiUrl(`/api/checkpoints?path=${encodeURIComponent(path)}`), {
       method: 'DELETE',
     });
     const data = await res.json();
@@ -1013,7 +1024,7 @@ async function runInference() {
   }
 
   try {
-    const res = await fetch('/api/predict', {
+    const res = await fetch(apiUrl('/api/predict'), {
       method: 'POST',
       body: formData,
     });
@@ -1031,10 +1042,10 @@ async function runInference() {
     const playerBox = document.getElementById('audio-player-box');
     const player = document.getElementById('audio-player');
     if (data.audio_stream_path) {
-      player.src = `/api/audio?path=${encodeURIComponent(data.audio_stream_path)}`;
+      player.src = apiUrl(`/api/audio?path=${encodeURIComponent(data.audio_stream_path)}`);
       playerBox.style.display = 'block';
     } else if (exampleVal) {
-      player.src = `/api/audio?path=${encodeURIComponent(exampleVal)}`;
+      player.src = apiUrl(`/api/audio?path=${encodeURIComponent(exampleVal)}`);
       playerBox.style.display = 'block';
     }
 
@@ -1191,18 +1202,30 @@ function toggleLiveLogScale(inspectorNum = 1) {
 }
 
 async function refreshLiveMetricsData() {
-  initLiveMetricsChart();
+  if (liveMetricsRefreshInProgress) return;
+
+  liveMetricsRefreshInProgress = true;
   try {
-    const res = await fetch('/api/experiments/latest');
-    if (!res.ok) return;
+    initLiveMetricsChart();
+    const res = await fetch(apiUrl(`/api/experiments/latest?_=${Date.now()}`), {
+      cache: 'no-store'
+    });
+    if (!res.ok) {
+      if (res.status !== 404) {
+        console.warn(`Failed to fetch live latest metrics: HTTP ${res.status}`);
+      }
+      return;
+    }
     const data = await res.json();
-    if (data && data.metrics) {
+    if (data && Array.isArray(data.metrics)) {
       liveMetricsData = data.metrics;
       renderLiveSelectedMetric(1);
       renderLiveSelectedMetric(2);
     }
   } catch (e) {
     console.warn('Failed to fetch live latest metrics:', e);
+  } finally {
+    liveMetricsRefreshInProgress = false;
   }
 }
 
@@ -1434,7 +1457,7 @@ async function loadExperimentsList() {
   initExpChart();
   const select = document.getElementById('exp-run-select');
   try {
-    const res = await fetch('/api/experiments');
+    const res = await fetch(apiUrl('/api/experiments'));
     const list = await res.json();
     select.innerHTML = '<option value="">-- Choose Logged Experiment Run --</option>';
     if (!list || list.length === 0) {
@@ -1465,7 +1488,7 @@ async function onSelectExperimentRun() {
   if (!expId) return;
 
   try {
-    const res = await fetch(`/api/experiments/${encodeURIComponent(expId)}`);
+    const res = await fetch(apiUrl(`/api/experiments/${encodeURIComponent(expId)}`));
     const data = await res.json();
 
     currentExpMetricsData = data.metrics || [];
@@ -1760,7 +1783,7 @@ async function runDatasetAnalysis() {
   }
 
   try {
-    const res = await fetch('/api/dataset/summary', {
+    const res = await fetch(apiUrl('/api/dataset/summary'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1809,7 +1832,7 @@ async function recalculateHardwareOnly() {
   const workers = parseInt(document.getElementById('ds-workers')?.value) || 4;
 
   try {
-    const res = await fetch('/api/dataset/summary', {
+    const res = await fetch(apiUrl('/api/dataset/summary'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2237,7 +2260,7 @@ async function generateClassMask() {
   }
 
   try {
-    const response = await fetch('/api/outputs/class-mask', {
+    const response = await fetch(apiUrl('/api/outputs/class-mask'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
