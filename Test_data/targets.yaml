@@ -45,7 +45,11 @@ classification_targets:
   - name: minmag
     tags:
       - key: class
-        value: Miniopterus magnater       
+        value: Miniopterus magnater
+  - name: minpus
+    tags:
+      - key: class
+        value: Miniopterus pusillus
 
 roi:
   default:

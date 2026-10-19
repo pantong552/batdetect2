@@ -48,6 +48,12 @@ sources:
     description: GBW recordings and annotations
     annotations_dir: /content/batdetect2_dataset/anns/GBW
     audio_dir: /content/batdetect2_dataset/audio/GBW
+    
+  - format: batdetect2
+    name: LBW Species Data
+    description: LBW recordings and annotations
+    annotations_dir: /content/batdetect2_dataset/anns/LBW
+    audio_dir: /content/batdetect2_dataset/audio/LBW    
 
   - format: batdetect2
     name: Background Noise
